@@ -1,0 +1,314 @@
+
+
+
+---
+title: "Modèles VAR"
+author: "Henri BERTHET"
+date: "28/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+rm(list=ls())
+```
+
+## Prologue
+
+Mon but dans ce billet est de rappeler d'abord la définition d'un processus multivarié, d'en proposer une ou plusieurs simulations "maison" proche de la définition matricielle, puis d'appréhender deux fonctions de R "simulate" et VAR.sim pour en comprendre mieux le paramétrage.
+Ensuite j'aborderai les test de stationnarité, puis de cointégration. Bonne lecture.
+Petite remarque: afin d'éviter des "bug" de la fonction "Knit" il est préférable d'utiliser le package "remotes::install_github('yihui/knitr')"
+
+## Processus Var(p)
+
+On rappelle qu'un processus vectoriel est un VAR(p) s'il est défini par:
+$$X_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$
+où $X_{t}$ est un vecteur $(x_{1 t},x_{2 t},...,...,x_{k t})^{'}$  
+
+On peut trouver un définition voisine:
+$$AX_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$
+Si A est inversible, on retrouve la première version en multipliant les deux membres de l'égalité par $A^{-1}$
+
+Il est bon de noter que pour un VAR(1) $i\in[0;+\infty[$ , $X_{0}$ est la condition initiale, et $X_{1}$ est 
+connu par le premier "choc" $\epsilon_{1}$. Nos simulations prendrons en général par défaut $X_{0}=0$ 
+
+## Une fonction pédagogique 
+
+Nous créons une fonction pour générer des processous VAR(p), non pas pour rivaliser avec les fonctions intégrées de R (VAR.sim ou simulate) mais pour mettre en évidence les calculs matriciels nécssaire à la génération.
+Nous la nommerons var(), elle prendra en paramètres n le nombre d'observations du processus, la matrice A si nécessaire, B, p l'ordre du var (nommé lag) et le mode "const" ou "none" suivant qu'il y ait $B_{0}$ ou non.
+
+```{r, var}
+var=function(n,A=diag(nrow(B)) , B,lag=1,mod=c("const","none","trend")){
+  Ai=solve(A)
+  C=ncol(B)
+  N=nrow(B)
+  vdat=matrix(0,N,n)
+  start=1+lag
+  v = matrix(rnorm(N*n),nrow = N,ncol=n,byrow = T)
+  
+  if(mod=="none") {
+    vdat[,1:lag]=Ai%*%v[,1:lag] # initialisation
+    for(i in start:n) {vdat[,i]=Ai%*%(B%*%vdat[,i-lag] +v[,i])} 
+    return(t(vdat)) } else
+      if(mod=="const") {
+        vdat[,1:lag]=Ai%*%(v[,1:lag] + B[,1])    # initialisation 
+        for(i in start:n) {vdat[,i]=Ai%*%(B[,2:C]%*%vdat[,i-lag] +v[,i]+B[,1])} 
+        return(t(vdat)) } else
+          if(mod=="trend") {
+            vdat[,1:lag]=Ai%*%(v[,1:lag] + B[,1]+B[,2])    # initialisation
+            for(i in start:n) {vdat[,i]=Ai%*%(B[,3:C]%*%vdat[,i-lag] +v[,i]+B[,1]+i*B[,2])} 
+            return(t(vdat)) } 
+}  
+
+```
+
+A titre d'exemple prenons le Var(1) suivant:
+$$\left(\begin{array}{l}x_{t} \\y_{t}\end{array}\right)=\left(\begin{array}{ll}
+0.7 & 0.2 \\0.2 & 0.7\end{array}\right)\left(\begin{array}{l}x_{t-1} \\y_{t-1}
+\end{array}\right)+\left(\begin{array}{l}
+\epsilon_{1_{t}} \\\epsilon_{2_{t}}\end{array}\right)$$
+
+sur 100 réalisations, les $\epsilon_{i}$ des bruits blancs normaux centrés réduits indépendants.
+
+```{r, exemple1}
+set.seed(123456)
+B1<-matrix(c(0.7, 0.2, 0.2, 0.7), 2)
+vdat1=var(100,B=B1,lag=1,mod="none")
+head(vdat1)
+ts.plot(vdat1,type="l",col=c(1,2),main="Exemple 1")
+```
+
+Si on veut rajouter une constante, $\left(\begin{array}{ll}0.5\\0.8\end{array}\right)$
+
+
+```{r, exemple2}
+set.seed(123456)
+B2<-matrix(c(0.5,0.7, 0.2, 0.8,0.2, 0.7),nrow= 2,byrow=T)
+vdat2=var(100,B=B2,lag=1,mod="const")
+head(vdat2)
+ts.plot(vdat2,type="l",col=c(1,2),main="Exemple 1 avec constante")
+```
+Remarquons au passage qu'avoir ajouté une constante (0.5;0.8) dans le processus bivarié ne cause pas une translation de 0.5 ou 0.8 sur chaque variable (sauf pour la première valeur). Mais en simulant à deux reprises le même bruit blanc la différence entre les deux processus semble converger, mais ce cas particulier ne se trouve jamais dans la réalité.
+
+## Fonction "simulate" de R
+
+Cette fonction simule un VAR(p) dont les coefficients sont préalablement définis par VARMA(), tout ceci dans la librairie "dse".  
+Pour saisir correctement les coefficients il faut écrire le processus de la façon suivante:  
+$$Id.X_{t}-\sum_{i=1}^{p} B_{i} X_{t-i}=B_{0}+\varepsilon_{t}$$       
+et saisir les coefficients de chaque matrice (sans oublier Id !!!) dans l'ordre L1C1, L2C1, L1C2, L2C2...dans une array de 2 sous matrices 2*2...!! .
+On peut imposer une matrice B de covariance sur les bruits blancs (ici ce sera Id)
+Le vecteur constante correspond au paramètre TREND lorsqu'il est utilisé.
+
+
+Nous allons retrouver les deux processus générés par notre foncton (à condition d'utiliser la même séquence de bruits blancs)
+
+```{r, simulate2, message=FALSE,warning=FALSE}
+library("dse")
+Apoly= array(c(1,-0.7,0,-0.2,0,-0.2,1,-0.7),c(2,2,2))  
+B = diag (2)
+var1=ARMA(A=Apoly,B = B) # 
+set.seed( 123456)
+w = matrix(rnorm(200),nrow = 100,ncol=2)
+varsim= simulate(var1,sampleT = 100,noise = w )
+
+vardat=matrix(varsim$output,nrow = 100,ncol=2)
+head(vardat)
+colnames(vardat)=c( "y1", "y2")
+ts.plot(vardat, type="l", col=c(1,2),main="Exemple 1 avec simulate sans constante")
+
+TRD=c(0.5,0.8)
+var11=ARMA(A=Apoly,B = B,TREND=TRD)
+varsim= simulate(var11,sampleT = 100,noise = w )
+vardat=matrix(varsim$output,nrow = 100,ncol=2)
+ts.plot(vardat, type="l", col=c(1,2),main="Exemple 1 avec simulate avec constante")
+```
+
+L'écriture du processus sous la seconde forme permet de faire apparaître le "polynôme des retards". En effet on nomme L l'opérateur défini par $L(X_{t})=X_{t-1}$ (qui est linéaire ). Par voie de conséquence on aura $L^{p}(X_{t})=X_{t-p}$ , à ce compte là on peut écrire $$Id.X_{t}-\sum_{i=1}^{p} B_{i} X_{t-i}=B_{0}+\varepsilon_{t}=(Id-\sum_{i=1}^{p}B_{i}L^{i})X_{t}=B_{0}+\varepsilon_{t}$$  
+
+Ce polynôme retard interviendra lorsque nous aborderons la stationnarité des processus.
+
+### Exemple d'un VAR(2)
+
+$$\left[\begin{array}{l}y_{1} \\y_{2}\end{array}\right]_{t}=\left[\begin{array}{c}5.0 \\10.0
+\end{array}\right]+\left[\begin{array}{cc}
+0.5 & 0.2 \\
+-0.2 & -0.5
+\end{array}\right]\left[\begin{array}{l}
+y_{1} \\
+y_{2}
+\end{array}\right]_{t-1}+\left[\begin{array}{cc}
+-0.3 & -0.7 \\
+-0.1 & 0.3
+\end{array}\right]\left[\begin{array}{l}
+y_{1} \\
+y_{2}
+\end{array}\right]_{t-2}+\left[\begin{array}{c}
+\varepsilon_{1} \\
+\varepsilon_{2}
+\end{array}\right]_{t}$$
+
+
+```{r, simulate1,message=FALSE }
+
+Apoly= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
+Apoly
+B = diag (2)
+TRD=c(5,10)
+var2=ARMA(A=Apoly,B = B,TREND=TRD)
+
+set.seed(123456) 
+w = matrix(rnorm(1000),nrow = 500,ncol=2)
+
+varsim= simulate(var2,sampleT = 500,noise = w )
+vardat=matrix(varsim$output,nrow = 500,ncol=2)
+colnames(vardat)=c( "y1","y2")
+plot.ts( vardat,main ="VAR(2) avec simulate", xlab ="’’")
+
+```
+
+
+
+## Fonction VAR.sim de R
+
+VAR.sim de la librairie tsDyn réalise également des simulations de modèles Var(p). La saisie des coefficients est assez proche de celle de notre fonction pédagogique, à savoir la matrice des coefficeients relative à l'écriture $$X_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$ ; lag=p pour l'ordre du Var, la présence de la constante ou non est paramétrée par include ="const" ou "none", le bruit blanc est "innov=". 
+Voici ce que donne notre premier Var(1)  
+
+```{r, VAR.sim1, , warning=FALSE,message=FALSE}
+library(tsDyn)
+B1<-matrix(c(0.7, 0.2, 0.2, 0.7), 2)
+set.seed(123456)
+w = matrix(rnorm(200),nrow = 100,ncol=2)
+var1<-VAR.sim(B=B1,lag=1,n=100,include="none",innov=w)
+ts.plot(var1, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim")
+
+``` 
+
+En introduisant la constante pour le Var(2)
+```{r, VAR.sim2}
+B2<-rbind(c(5, 0.5, 0.2,-0.3,-0.7), c(10, -0.2, -0.5,-0.1,0.3))
+set.seed(123456)
+w = matrix(rnorm(1000),nrow = 500,ncol=2) 
+var2 <- VAR.sim(B=B2,n=500, lag=2,include="const",innov=w )
+plot.ts( var2,main ="VAR(2) avec VAR.sim", xlab ="’’")
+```
+
+## Stationnarité
+
+On rappelle qu'un processus est stationnaire (faiblement ou de second ordre) si et seulement si:
+$$E\left[X_{t}\right]=\mu, \forall t \in \mathbb{Z}$$
+$$E\left[X_{t} X_{t}^{\prime}\right]<\infty, \forall t \in \mathbb{Z}$$
+$$E\left[\left(X_{t}-\boldsymbol{\mu}\right)\left(X_{t-h}-\boldsymbol{\mu}\right)^{\prime}\right]=\Gamma_{X}(h)=\Gamma_{X}^{\prime}(-h), \quad \forall t \in \mathbb{Z} \text { et } h=0,1, \ldots$$
+La dernière ligne de la définition exprime que la matrice des covariances des composantes est indépendante de t.
+
+Attention, cette définition est valable pour tous les types de processus. Pour un VAR(p) la stationnarité fera l'objet d'une propriété spécifique, qui évitera le recours à cette définition générale pas toujours facile à manipuler.
+
+Il apparaît clairement que si le processus vectoriel est stationnaire les composantes le sont. Visuellemnt si on constate au moins une composante non stationnaire, le processus ne l'est pas (on disposera d'une batterie de tests). La réciproque est fausse, donc éviter de conclure hâtivement en voyant les graphiques de chaque composante. Voici un contrexemple:  
+$$y_{t}=\left\{\begin{array}{lcc}
+y_{1, t} & = & \varepsilon_{1, t} \\
+y_{2, t} & = & \varepsilon_{2, t}+(-1)^{t} \varepsilon_{1, t}
+\end{array}\right.$$
+Il est clair que chaque composante est stationnaire, comme le montre le graphique ci-dssous.
+
+```{r, contrexemple}
+
+set.seed(123456)
+w = matrix(rnorm(200),nrow = 100,ncol=2)
+y1=w[,1]
+y2=w[,2]+rep(c(-1,1),50)*y1
+vdat3=matrix(c(y1,y2),nrow=100)
+plot.ts(vdat3,type="l",col=c(1,2))
+
+```
+
+Mais le processus bivarié n'est pas stationnaire...!
+En effet la matrice des covariances est:  $$\Gamma_{h,t}=\left[\begin{array}{c} 1 & (-1)^{t}\\(-1)^{t} & 2\end{array}\right]$$
+qui dépend de t .
+
+# Stationnarité d'un VAR(p)
+
+## Cas d'un VAR(1)
+
+Quiconque a essyé de coder une série de type AR(1), (ie $X_{t}=aX_{t-1}+\epsilon_{t}$) s'est rendu compte que le processus est visiblement stationnaire pour |a|<1, ou est une marche aléatoire pour |a|=1 et "explosif" pour |a|>1 .
+Ecrivons un tel processus sous la forme:
+$$(1-aL)X_{t}=\epsilon_{t}$$  
+avec L l'opératuer retard. Cet opérateur est une application linéaire de l'espace vectoriel des fonctions $X_{t}$ muni de la norme $||X||=\underset{t\in{R}}{sup}{(|X_{t}|)} $ 
+qui est donc un espace normé complet (espace de Banach). Par voie de conséquence les apllications linéaires sont dotées aussi d'une norme.
+$$||L||=\underset{||X||=1}{sup}(||L(X)||)$$
+Pour notre opérateur retard L on a $||L||=1$ (facile à vérifier), par conséquent si |a|<1 on aura $||aL||<1$. Quelques connaissances de calcul différentiel nous permettent de conclure que l'opérateur $(1-aL)$ est inversible et que son inverse sera:
+$$(1-aL)^{-1}=\sum_{j=0}^{+\infty}(aL)^{j}$$
+Donc le processus $X_{t}$ serait défini par:
+$$X_{t}=\sum_{j=0}^{+\infty}a^{j}\epsilon_{t-j}$$  
+si cette série converge..!  
+On sait déjà que $\sum_{j=0}^{+\infty}|a|^{j}$ est absolument convergente , puisqu |a|<1, et par conséquent que $\sum_{j=0}^{+\infty}({a^{2}})^{j}$ converge aussi. Le théorème de Kolmogorov nous assure alors la convergence presque partout de $X_{t}=\sum_{j=0}^{+\infty}a^{j}\epsilon_{t-j}$ les $\epsilon_{t-j}$ étant indépendants.  
+
+Ce que nous venons d'étudier pour une série simple se transpose aisément au cas d'un VAR(1) multivarié. $X_{t}$ et $\epsilon_{t}$ sont des vecteurs se dimension N, et a devient une matrice A $N\times N$. Si on note encore L l'opérateur retard, le processus est caractérisé par:
+$$(1-AL)X_{t}=\epsilon_{t}$$
+La condition d'inversibilité est $||AL||<1$, donc $||A||<1$. Dans la théorie des espaces vectoriels normés la norme d'une matrice (pzrmi d'autres normes !) est le module de sa plus grande valeur propre. D'où le résultat:  
+*Un processus Var(1) $(1-AL)X_{t}=\epsilon_{t}$ est stable si A a toutes ses valeurs propres en module strictement inférieures à 1*  
+
+N.B: Le lecteur attentif aura remarqué que nous disons "stable" et non plus "stationnaire". 
+En effet il existe des processus multivariés avec des valeurs propres de A supérieurs à 1 mais stationnaires faiblement (ou du second ordre).
+
+## Tests de stationnarité  
+
+Au vu de ce qui précède, si une au moins des variables incluses dans le VAR n'est pas stationnaire, le VAR ne le sera pas. Donc il va s'agir de contrôler la stationnarité de chaque variable incluse dans le modèle VAR.
+Avant d'aborder les tests de stationnarité nous ferons un détour pour distiguer deux types de NON-stationnarité d'un processus univarié (ou d'une série univariée).
+
+### non stationnarité déterministe
+C'est le cas où le processus est de la forme:
+$$X_{t}=f(t)+Z_{t}$$
+où $Z_{t}$ est stationnaire et f fonction vectorielle. Pour stationnariser un tel processus, il suffit de lui soustraire la tendance déterministe. Cette tendance est souvent $f(t)=a+bt$ ou $f(t)=a+bt+ct^{2}$   
+$X_{t}$ est appelé dans la littérature "trend-stationary process" ou plus simplement TS.
+
+
+Nous allons développer un exemple.
+Nous simulons le processus : 
+$$X_{t}=0.7X_{t-1}+5+0.05t+\epsilon_{t}$$
+Attention, il n'est pas a priori de la forme trend-stationary process. Nous en traçons une réalisation sur 100 valeurs, qui va suggerer un trend affine f(t), que nous allons estimer par régression de moindres carrés, et retrancher f(t) estimé au processus initial. Le résultat semble stationnaire, ce que nous vérifierons plus loin avec des tests adaptés.
+
+
+```{r, trend stationary}
+set.seed(123456)
+B2<-matrix(c(5,0.05, 0.7),nrow=1)
+vdat4=var(100,B=B2,lag=1,mod="trend")
+ts.plot(vdat4,type="l",col=c(1))
+
+lm=lm(vdat4~c(1:100))
+lm
+lines(lm$fitted.values,col="green")
+lines(lm$residuals+15.6336,col="red")
+
+```
+
+## Non stationnarité stochastique
+
+$X_{t}$ est caractérisé par le fait que le processus différencié $X_{t}-X_{t-1}$ est stationnaire.
+$$(1-L) Y_{t}=Z_{t}\;stationnaire $$ 
+Simulons l'exemple $Y{t}=Y_{t-1}+0.1+\epsilon_{t}$ (marche aléatoire avec dérive 0.3)
+
+```{r, DS}
+set.seed(123456)
+B2<-matrix(c(0.3, 1),nrow=1)
+vdat5=var(100,B=B2,lag=1,mod="const")
+ts.plot(vdat5,type="l",col=c(1),ylim=c(-10,60),main="marche aléatoire et sa différentielle")
+
+diff_vdat5=diff(vdat5,lag=1,differences=1)
+lines(diff_vdat5,col="red")
+
+
+```
+Un tel processus est nommé processus DS (Difference stationnary), ou processus intégré d'ordre 1  ( I(1)).  
+S'il faut différencier d fois avant la stationnarité on dit à ce moment là processus I(d).
+Ce qui s'écrit:
+$$(1-L)^{d} Y_{t}=Z_{t}$$
+Le polynôme retard $(1-L)^d$ a 1 comme racine d'ordre d (ou d racines unitaires).
+
+Il est à noter qu'on peut déceler la non stationnarité par le corrélogramme par une décroissance lente, mais sans que celà permette de distinguer DS ou TS. La stationnarité se signale
+
+```{r, correlogramme}
+acf(vdat4,main="vdat4")
+acf(vdat5,main="vdat5")
+acf(diff_vdat5,main="diff_vdat5")
+```
+
+
