@@ -200,6 +200,9 @@ $$E\left[X_{t} X_{t}^{\prime}\right]<\infty, \forall t \in \mathbb{Z}$$
 $$E\left[\left(X_{t}-\boldsymbol{\mu}\right)\left(X_{t-h}-\boldsymbol{\mu}\right)^{\prime}\right]=\Gamma_{X}(h)=\Gamma_{X}^{\prime}(-h), \quad \forall t \in \mathbb{Z} \text { et } h=0,1, \ldots$$
 La dernière ligne de la définition exprime que la matrice des covariances des composantes est indépendante de t.
 
+Les termes de cette matrice sont $\gamma_{i j}(h)$ les fonctions d'autocorrélation des $y_{i}$ si $i=j$ et les fonctions d'autocorrélation croisées entre $y_{i}$ et $y_{j}$.  
+$$\gamma_{i j}(h)=\operatorname{Cov}\left(y_{i t}, y_{j, t-h}\right), \forall i \forall j$$
+
 Attention, cette définition est valable pour tous les types de processus. Pour un VAR(p) la stationnarité fera l'objet d'une propriété spécifique, qui évitera le recours à cette définition générale pas toujours facile à manipuler.
 
 Il apparaît clairement que si le processus vectoriel est stationnaire les composantes le sont. Visuellemnt si on constate au moins une composante non stationnaire, le processus ne l'est pas (on disposera d'une batterie de tests). La réciproque est fausse, donc éviter de conclure hâtivement en voyant les graphiques de chaque composante. Voici un contrexemple:  
@@ -207,7 +210,13 @@ $$y_{t}=\left\{\begin{array}{lcc}
 y_{1, t} & = & \varepsilon_{1, t} \\
 y_{2, t} & = & \varepsilon_{2, t}+(-1)^{t} \varepsilon_{1, t}
 \end{array}\right.$$
-Il est clair que chaque composante est stationnaire, comme le montre le graphique ci-dssous.
+Il est clair que chaque composante est stationnaire:
+Leurs espérances sont nulles, donc indépendantes de t et,
+$$\gamma_{y_{1}}(h)=Cov(y_{1,t},y_{1,t-h})=E(y_{1,t}.y_{1,t-h})=E(\epsilon_{1,t}.\epsilon_{1,t-h})=\gamma_{\epsilon_{1}}(h) $$
+qui ne dépend pas de t, puisque  $\epsilon_{1,t}$ est bruit blanc (donc stationnaire).
+De même,
+$$\operatorname{Cov}\left(y_{2, t+h}, y_{2, t}\right)=E\left[y_{2, t+h} y_{2, t}\right]=E\left[\left(\varepsilon_{2, t+h}+(-1)^{t+h} \varepsilon_{1, t+h}\right)\left(\varepsilon_{2, t}+(-1)^{t} \varepsilon_{1, t}\right)\right]=\gamma_{\varepsilon_{2}}(h)+(-1)^{h} \gamma_{\varepsilon_{1}}(h)$$
+On peut constater sur le graphique ci-dssous.
 
 ```{r, contrexemple}
 
@@ -221,8 +230,14 @@ plot.ts(vdat3,type="l",col=c(1,2))
 ```
 
 Mais le processus bivarié n'est pas stationnaire...!
-En effet la matrice des covariances est:  $$\Gamma_{h,t}=\left[\begin{array}{c} 1 & (-1)^{t}\\(-1)^{t} & 2\end{array}\right]$$
-qui dépend de t .
+$$\operatorname{Cov}\left(y_{2, t+h}, y_{1, t}\right)=E\left[y_{2, t+h} y_{1, t}\right]=E\left[\left(\varepsilon_{2, t+h}+(-1)^{t+h} \varepsilon_{1, t+h}\right)\left( \varepsilon_{1, t}\right)\right]=(-1)^{t+h} \gamma_{\varepsilon_{1}}(h)$$
+qui est un terme dépendant de t.
+En terminant tous les calculs de la matrice des covariances on a: 
+$$\Gamma_{h,t}=\left[\begin{array}{cc}
+\gamma_{\varepsilon_{1}(h)} & (-1)^{t} \gamma_{\varepsilon_{1}(h)} \\
+(-1)^{t+h} \gamma_{\varepsilon_{1}(h)} & \left.\gamma_{\varepsilon_{2}(h)}+(-1)^{h}\right) \gamma_{\varepsilon_{1}(h)}
+\end{array}\right]$$
+qui dépend de t.
 
 # Stationnarité d'un VAR(p)
 
@@ -247,7 +262,46 @@ La condition d'inversibilité est $||AL||<1$, donc $||A||<1$. Dans la théorie d
 *Un processus Var(1) $(1-AL)X_{t}=\epsilon_{t}$ est stable si A a toutes ses valeurs propres en module strictement inférieures à 1*  
 
 N.B: Le lecteur attentif aura remarqué que nous disons "stable" et non plus "stationnaire". 
-En effet il existe des processus multivariés avec des valeurs propres de A supérieurs à 1 mais stationnaires faiblement (ou du second ordre).
+En effet il existe des processus multivariés avec des valeurs propres de A supérieurs à 1 mais stationnaires faiblement (ou du second ordre).  
+
+## Cas d'un VAR(p)  
+
+On travaille maintenant sur un processus de K variables du type:  
+$$y_{t}=\nu+A_{1} y_{t-1}+A_{2} y_{t-2}+\cdots+A_{p} y_{t-p}+u_{t}, \quad t \in \mathbb{Z}$$
+On va, par un procédé analogue à celui qui nous permettait de transformer une équation différentielle d'ordre p en un sytème différentiel d'ordre 1, se rammener à un VAR(1).  
+On pose: 
+$$Y_{t}=\left[\begin{array}{c}
+y_{t} \\
+y_{t-1} \\
+\vdots \\
+y_{t-p+1}
+\end{array}\right]$$
+$$\mathbf{C}=\left[\begin{array}{c}
+\nu \\
+0 \\
+\vdots \\
+0
+\end{array}\right]$$
+$$\mathbf{U}_{t}=\left[\begin{array}{c}
+u_{t} \\
+0 \\
+\vdots \\
+0
+\end{array}\right]$$
+et
+$$\mathbf{A}=\left[\begin{array}{ccccc}
+A_{1} & A_{2} & \cdots & A_{p-1} & A_{p} \\
+I_{K} & 0 & \ldots & 0 & 0 \\
+0 & I_{K} & \ddots & 0 & 0 \\
+\vdots & \ddots & \ddots & \ddots & \vdots \\
+0 & 0 & \ldots & I_{K} & 0
+\end{array}\right]$$
+
+Attention $y_{t},\nu, u_{t}, 0$ sont déjà des vecteurs colonnes de dimension K; 
+A est une matrice de dimension (K.p)² qui est appelée "MATRICE COMPAGNON du processus"
+A ce prix on obtient une écriture équivalente:
+$$Y_{t}=\mathbf{C}+\mathbf{A} Y_{t-1}+\mathbf{U}_{t}, t \in \mathbb{Z}$$
+**CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.**
 
 ## Tests de stationnarité  
 
