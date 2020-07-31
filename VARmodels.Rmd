@@ -298,10 +298,20 @@ I_{K} & 0 & \ldots & 0 & 0 \\
 \end{array}\right]$$
 
 Attention $y_{t},\nu, u_{t}, 0$ sont déjà des vecteurs colonnes de dimension K; 
-A est une matrice de dimension (K.p)² qui est appelée "MATRICE COMPAGNON du processus"
+A est une matrice de dimension (K.p)² (matrice dite "par blocs") qui est appelée "MATRICE COMPAGNON du processus"
 A ce prix on obtient une écriture équivalente:
 $$Y_{t}=\mathbf{C}+\mathbf{A} Y_{t-1}+\mathbf{U}_{t}, t \in \mathbb{Z}$$
-**CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.**
+**CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.**  
+
+Ce sont ces valeurs propres qui seront soumises aux tests statistiques.  
+Dans la littérature traitant de ces tests on lit souvent l'expression "racines unitaires" ("units roots"), de quoi s'agit-t-il?  
+Lorsqu'on calcule les valeurs propres de A, la matrice compagnon, on résoud l'équation:
+$$det(A-\lambda.Id)=0$$ 
+Avec un peu d'algèbre linéaire et une manipulation de matrices par blocs on montre que l'équation ci-dessus est équivalante à $$\operatorname{det}\left(\lambda^{p}.Id-A_{1} \lambda^{p-1}-A_{2} \lambda^{p-2}-\cdots-A_{p}\right)=0$$
+Mais les statisticiens préfèrent que les exposants soient identiques aux indices, ce qui revient à poser $$\lambda=\frac{1}{z} $$
+ce qui donne:
+$$\operatorname{det}\left(Id-A_{1} z-A_{2} z^{2}-\cdots-A_{p} z^{p}\right)=0$$
+les solutions de cettes équations devant vérifier $|z|>1$ .
 
 ## Tests de stationnarité  
 

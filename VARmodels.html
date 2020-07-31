@@ -598,7 +598,10 @@ I_{K} &amp; 0 &amp; \ldots &amp; 0 &amp; 0 \\
 \vdots &amp; \ddots &amp; \ddots &amp; \ddots &amp; \vdots \\
 0 &amp; 0 &amp; \ldots &amp; I_{K} &amp; 0
 \end{array}\right]\]</span></p>
-<p>Attention <span class="math inline">\(y_{t},\nu, u_{t}, 0\)</span> sont déjà des vecteurs colonnes de dimension K; A est une matrice de dimension (K.p)² qui est appelée “MATRICE COMPAGNON du processus” A ce prix on obtient une écriture équivalente: <span class="math display">\[Y_{t}=\mathbf{C}+\mathbf{A} Y_{t-1}+\mathbf{U}_{t}, t \in \mathbb{Z}\]</span> <strong>CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.</strong></p>
+<p>Attention <span class="math inline">\(y_{t},\nu, u_{t}, 0\)</span> sont déjà des vecteurs colonnes de dimension K; A est une matrice de dimension (K.p)² (matrice dite “par blocs”) qui est appelée “MATRICE COMPAGNON du processus” A ce prix on obtient une écriture équivalente: <span class="math display">\[Y_{t}=\mathbf{C}+\mathbf{A} Y_{t-1}+\mathbf{U}_{t}, t \in \mathbb{Z}\]</span> <strong>CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.</strong></p>
+<p>Ce sont ces valeurs propres qui seront soumises aux tests statistiques.<br />
+Dans la littérature traitant de ces tests on lit souvent l’expression “racines unitaires” (“units roots”), de quoi s’agit-t-il?<br />
+Lorsqu’on calcule les valeurs propres de A, la matrice compagnon, on résoud l’équation: <span class="math display">\[det(A-\lambda.Id)=0\]</span> Avec un peu d’algèbre linéaire et une manipulation de matrices par blocs on montre que l’équation ci-dessus est équivalante à <span class="math display">\[\operatorname{det}\left(\lambda^{p}.Id-A_{1} \lambda^{p-1}-A_{2} \lambda^{p-2}-\cdots-A_{p}\right)=0\]</span> Mais les statisticiens préfèrent que les exposants soient identiques aux indices, ce qui revient à poser <span class="math display">\[\lambda=\frac{1}{z} \]</span> ce qui donne: <span class="math display">\[\operatorname{det}\left(Id-A_{1} z-A_{2} z^{2}-\cdots-A_{p} z^{p}\right)=0\]</span> les solutions de cettes équations devant vérifier <span class="math inline">\(|z|&gt;1\)</span> .</p>
 </div>
 <div id="tests-de-stationnarité" class="section level2">
 <h2>Tests de stationnarité</h2>
