@@ -13,6 +13,12 @@ knitr::opts_chunk$set(echo = TRUE)
 rm(list=ls())
 ```
 
+```{r, library, message=F, warning=F}
+
+library("dse")
+library("urca")
+library("tsDyn")
+```
 ## Prologue
 
 Mon but dans ce billet est de rappeler d'abord la définition d'un processus multivarié, d'en proposer une ou plusieurs simulations "maison" proche de la définition matricielle, puis d'appréhender deux fonctions de R "simulate" et VAR.sim pour en comprendre mieux le paramétrage.
@@ -103,7 +109,6 @@ Le vecteur constante correspond au paramètre TREND lorsqu'il est utilisé.
 Nous allons retrouver les deux processus générés par notre foncton (à condition d'utiliser la même séquence de bruits blancs)
 
 ```{r, simulate2, message=FALSE,warning=FALSE}
-library("dse")
 Apoly= array(c(1,-0.7,0,-0.2,0,-0.2,1,-0.7),c(2,2,2))  
 B = diag (2)
 var1=ARMA(A=Apoly,B = B) # 
@@ -149,7 +154,6 @@ y_{2}
 
 
 ```{r, simulate1,message=FALSE }
-
 Apoly= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
 Apoly
 B = diag (2)
@@ -167,14 +171,13 @@ plot.ts( vardat,main ="VAR(2) avec simulate", xlab ="’’")
 ```
 
 
-
 ## Fonction VAR.sim de R
 
 VAR.sim de la librairie tsDyn réalise également des simulations de modèles Var(p). La saisie des coefficients est assez proche de celle de notre fonction pédagogique, à savoir la matrice des coefficeients relative à l'écriture $$X_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$ ; lag=p pour l'ordre du Var, la présence de la constante ou non est paramétrée par include ="const" ou "none", le bruit blanc est "innov=". 
 Voici ce que donne notre premier Var(1)  
 
 ```{r, VAR.sim1, , warning=FALSE,message=FALSE}
-library(tsDyn)
+
 B1<-matrix(c(0.7, 0.2, 0.2, 0.7), 2)
 set.seed(123456)
 w = matrix(rnorm(200),nrow = 100,ncol=2)
@@ -344,7 +347,7 @@ lines(lm$residuals+15.6336,col="red")
 
 ```
 
-## Non stationnarité stochastique
+### Non stationnarité stochastique
 
 $X_{t}$ est caractérisé par le fait que le processus différencié $X_{t}-X_{t-1}$ est stationnaire.
 $$(1-L) Y_{t}=Z_{t}\;stationnaire $$ 
@@ -375,4 +378,54 @@ acf(vdat5,main="vdat5")
 acf(diff_vdat5,main="diff_vdat5")
 ```
 
+### Test de Dickey-Fuller
 
+L'hypothèse nulle H0 est la présence de racines unitaires (donc de NON stationnarité de type DS).
+Le test va s'appliquer à une série univariée.
+La fonction utilisée par R est "ur.df" de la librairie "urca".
+L'existence de racines unitaires va être testée dans trois modèles différents:  
+
+$$\Delta Y_{t}=\rho Y_{t-1}+\alpha+\beta t+\sum_{j=1}^{p} \phi_{j} \Delta Y_{t-j}+\varepsilon_{t}\;\;\;(modèle\:1)$$ 
+$$\Delta Y_{t}=\rho Y_{t-1}+\alpha+\sum_{j=1}^{p} \phi_{j} \Delta Y_{t-j}+\varepsilon_{t}\;\;\;(modèle\:2)$$
+$$\Delta Y_{t}=\rho Y_{t-1}+\sum_{j=1}^{p} \phi_{j} \Delta Y_{t-j}+\varepsilon_{t}\;\;\;(modèle\:3)$$
+Il s'agit donc de vérifier la significativité des coefficients $\rho,\alpha,\beta$ comme avec le test de Student, mais avec des valeurs critiques différentes référencées dans les tables de Dickey-Fuller.  
+L'hypothèse nulle H0 est; $\rho =0$ contre H1; $\rho <0$ , donc une zone de rejet à GAUCHE.
+Pour $\alpha,\beta$ c'est leur valeur absolue qui est testée, donc zone de rejet à DROITE.
+
+
+#### premier exemple
+$$Y{t}=10+0.5t+0.7Y_{t-1}+\epsilon_{t}$$
+série AR(1) avec trend et constante.
+
+```{r, Dickey-Fuller 1}
+
+set.seed(123456)
+B2<-matrix(c(10,0.5,0.7),nrow=1)
+vdat6=var(100,B=B2,lag=1,mod="trend")
+
+summary(ur.df(vdat6,type="trend",lags=4))
+```
+Nous obtenons dans la colonne Estimate les valeurs estimées des coefficients avec leurs significativités signalées par les *** . Intercept et tt pour constante et trend, et z.lag.1 pour rho..les autres coeffients sont peu significatifs, ce qui implique qu'on refera le test avec lag=1.  
+
+```{r, Dickey-Fuller 1.2}
+summary(ur.df(vdat6,type="trend",lags=1))
+```
+
+Les conclusions sont irrévocables, en plus on remarque une bonne estimation des coefficients. N'oublions pas que z.lag.1 donne 1-0.7 .
+tau3 les valeurs critiques concernant rho, phi2 et phi3 le trend et la constante.  
+
+Voyons le modèle 2 sans trend. Mais volontairement testons un modèle de type 1 sans trend.
+$$Y{t}=5+0.7Y_{t-1}+\epsilon_{t}$$
+
+```{r, Dickey-Fuller 2}
+set.seed(123456)
+B2<-matrix(c(5,0.7),nrow=1)
+vdat7=var(100,B=B2,lag=1,mod="const")
+
+summary(ur.df(vdat7,type="trend",lags=1))
+```
+tt n'a aucune significativité. On n'est donc pas dans le bon modèle, et on teste le modèle 2
+ .
+```{r, Dickey-Fuller 2.1} 
+summary(ur.df(vdat7,type="drift",lags=1))
+```
