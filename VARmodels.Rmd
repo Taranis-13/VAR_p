@@ -405,18 +405,18 @@ vdat6=var(100,B=B2,lag=1,mod="trend")
 
 summary(ur.df(vdat6,type="trend",lags=4))
 ```
-Nous obtenons dans la colonne Estimate les valeurs estimées des coefficients avec leurs significativités signalées par les *** . Intercept et tt pour constante et trend, et z.lag.1 pour rho..les autres coeffients sont peu significatifs, ce qui implique qu'on refera le test avec lag=1.  
+Nous obtenons dans la colonne Estimate les valeurs estimées des coefficients avec leurs significativités signalées par les *** . Intercept et tt pour constante et trend, et z.lag.1 pour rho..les autres coeffients sont peu significatifs, ce qui implique qu'on refera le test avec lag=1. 
 
 ```{r, Dickey-Fuller 1.2}
 summary(ur.df(vdat6,type="trend",lags=1))
 ```
 
-Les conclusions sont irrévocables, en plus on remarque une bonne estimation des coefficients. N'oublions pas que z.lag.1 donne 1-0.7 .
-tau3 les valeurs critiques concernant rho, phi2 et phi3 le trend et la constante.  
+Les conclusions sont irrévocables:  -6.1567 
+donc H0 racine unitaire rejetée, 28.8 H01 racine unitaire ET trend nul rejeté, 19.56 H02 racine unitaie ET trend nul ET constante nulle rejeté. Il faut avouer que la lecture des coefficients nous donne une vision claire du modèle: pas de racine unitaire, un trend ET une constante significatifs, donc STATONNAIRE AUTOUR D'UN TREND.
 
-Voyons le modèle 2 sans trend. Mais volontairement testons un modèle de type 1 sans trend.
-$$Y{t}=5+0.7Y_{t-1}+\epsilon_{t}$$
+Voyons le modèle 2 sans trend. Mais volontairement testons un modèle de type  sans trend.
 
+$$Y{t}=5++0.7Y_{t-1}+\epsilon_{t}$$
 ```{r, Dickey-Fuller 2}
 set.seed(123456)
 B2<-matrix(c(5,0.7),nrow=1)
@@ -424,8 +424,25 @@ vdat7=var(100,B=B2,lag=1,mod="const")
 
 summary(ur.df(vdat7,type="trend",lags=1))
 ```
+
 tt n'a aucune significativité. On n'est donc pas dans le bon modèle, et on teste le modèle 2
  .
 ```{r, Dickey-Fuller 2.1} 
 summary(ur.df(vdat7,type="drift",lags=1))
 ```
+
+Et enfin pour être exhaustif nous simulons un processus avec racine unitaire ET constante ET trend.
+$$Y{t}=10+0.5t+1Y_{t-1}+\epsilon_{t}$$
+
+
+```{r, Dickey-Fuller 3}
+set.seed(123456)
+B2<-matrix(c(10,0.5,1),nrow=1)
+vdat8=var(100,B=B2,lag=1,mod="trend")
+
+summary(ur.df(vdat8,type="trend",lags=1))
+```
+H0 racine unitaire non rejetée.
+
+
+
