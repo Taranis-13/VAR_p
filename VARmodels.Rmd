@@ -41,7 +41,7 @@ connu par le premier "choc" $\epsilon_{1}$. Nos simulations prendrons en génér
 ## Une fonction pédagogique 
 
 Nous créons une fonction pour générer des processous VAR(p), non pas pour rivaliser avec les fonctions intégrées de R (VAR.sim ou simulate) mais pour mettre en évidence les calculs matriciels nécssaire à la génération.
-Nous la nommerons var(), elle prendra en paramètres n le nombre d'observations du processus, la matrice A si nécessaire, B, p l'ordre du var (nommé lag) et le mode "const" ou "none" suivant qu'il y ait $B_{0}$ ou non.
+Nous la nommerons var(), elle prendra en paramètres n le nombre d'observations du processus, la matrice A si nécessaire, B, p l'ordre du var (la fonction est encore en constructioin et fonctionne par défaut avec p=1) et le mode "const" ou "none" suivant qu'il y ait $B_{0}$ ou non.
 
 ```{r, var}
 var=function(n,A=diag(nrow(B)) , B,lag=1,mod=c("const","none","trend")){

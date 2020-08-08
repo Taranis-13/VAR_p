@@ -384,7 +384,7 @@ library(&quot;tsDyn&quot;)</code></pre>
 </div>
 <div id="une-fonction-pédagogique" class="section level2">
 <h2>Une fonction pédagogique</h2>
-<p>Nous créons une fonction pour générer des processous VAR(p), non pas pour rivaliser avec les fonctions intégrées de R (VAR.sim ou simulate) mais pour mettre en évidence les calculs matriciels nécssaire à la génération. Nous la nommerons var(), elle prendra en paramètres n le nombre d’observations du processus, la matrice A si nécessaire, B, p l’ordre du var (nommé lag) et le mode “const” ou “none” suivant qu’il y ait <span class="math inline">\(B_{0}\)</span> ou non.</p>
+<p>Nous créons une fonction pour générer des processous VAR(p), non pas pour rivaliser avec les fonctions intégrées de R (VAR.sim ou simulate) mais pour mettre en évidence les calculs matriciels nécssaire à la génération. Nous la nommerons var(), elle prendra en paramètres n le nombre d’observations du processus, la matrice A si nécessaire, B, p l’ordre du var (la fonction est encore en constructioin et fonctionne par défaut avec p=1) et le mode “const” ou “none” suivant qu’il y ait <span class="math inline">\(B_{0}\)</span> ou non.</p>
 <pre class="r"><code>var=function(n,A=diag(nrow(B)) , B,lag=1,mod=c(&quot;const&quot;,&quot;none&quot;,&quot;trend&quot;)){
   Ai=solve(A)
   C=ncol(B)
@@ -740,8 +740,9 @@ summary(ur.df(vdat6,type=&quot;trend&quot;,lags=4))</code></pre>
 ## tau3 -4.04 -3.45 -3.15
 ## phi2  6.50  4.88  4.16
 ## phi3  8.73  6.49  5.47</code></pre>
-<p>Les conclusions sont irrévocables, en plus on remarque une bonne estimation des coefficients. N’oublions pas que z.lag.1 donne 1-0.7 . tau3 les valeurs critiques concernant rho, phi2 et phi3 la constante et le trend.</p>
-<p>Voyons le modèle 2 sans trend. Mais volontairement testons un modèle de type 1 sans trend. <span class="math display">\[Y{t}=5+0.7Y_{t-1}+\epsilon_{t}\]</span></p>
+<p>Les conclusions sont irrévocables: -6.1567 donc H0 racine unitaire rejetée, 28.8 H01 racine unitaire ET trend nul rejeté, 19.56 H02 racine unitaie ET trend nul ET constante nulle rejeté. Il faut avouer que la lecture des coefficients nous donne une vision claire du modèle: pas de racine unitaire, un trend ET une constante significatifs, donc STATONNAIRE AUTOUR D’UN TREND.</p>
+<p>Voyons le modèle 2 sans trend. Mais volontairement testons un modèle de type sans trend.</p>
+<p><span class="math display">\[Y{t}=5++0.7Y_{t-1}+\epsilon_{t}\]</span></p>
 <pre class="r"><code>set.seed(123456)
 B2&lt;-matrix(c(5,0.7),nrow=1)
 vdat7=var(100,B=B2,lag=1,mod=&quot;const&quot;)
@@ -819,6 +820,49 @@ summary(ur.df(vdat7,type=&quot;trend&quot;,lags=1))</code></pre>
 ##       1pct  5pct 10pct
 ## tau2 -3.51 -2.89 -2.58
 ## phi1  6.70  4.71  3.86</code></pre>
+<p>Et enfin pour être exhaustif nous simulons un processus avec racine unitaire ET constante ET trend. <span class="math display">\[Y{t}=10+0.5t+1Y_{t-1}+\epsilon_{t}\]</span></p>
+<pre class="r"><code>set.seed(123456)
+B2&lt;-matrix(c(10,0.5,1),nrow=1)
+vdat8=var(100,B=B2,lag=1,mod=&quot;trend&quot;)
+
+summary(ur.df(vdat8,type=&quot;trend&quot;,lags=1))</code></pre>
+<pre><code>## 
+## ############################################### 
+## # Augmented Dickey-Fuller Test Unit Root Test # 
+## ############################################### 
+## 
+## Test regression trend 
+## 
+## 
+## Call:
+## lm(formula = z.diff ~ z.lag.1 + 1 + tt + z.diff.lag)
+## 
+## Residuals:
+##      Min       1Q   Median       3Q      Max 
+## -2.49238 -0.68497  0.06999  0.68156  1.83998 
+## 
+## Coefficients:
+##              Estimate Std. Error t value Pr(&gt;|t|)    
+## (Intercept) 9.8000750  1.1461503   8.550 2.21e-13 ***
+## z.lag.1     0.0014312  0.0005668   2.525   0.0132 *  
+## tt          0.3710515  0.0486763   7.623 1.96e-11 ***
+## z.diff.lag  0.1496815  0.1014739   1.475   0.1435    
+## ---
+## Signif. codes:  0 &#39;***&#39; 0.001 &#39;**&#39; 0.01 &#39;*&#39; 0.05 &#39;.&#39; 0.1 &#39; &#39; 1
+## 
+## Residual standard error: 0.9516 on 94 degrees of freedom
+## Multiple R-squared:  0.9956, Adjusted R-squared:  0.9955 
+## F-statistic:  7104 on 3 and 94 DF,  p-value: &lt; 2.2e-16
+## 
+## 
+## Value of test-statistic is: 2.5252 25.3679 34.9433 
+## 
+## Critical values for test statistics: 
+##       1pct  5pct 10pct
+## tau3 -4.04 -3.45 -3.15
+## phi2  6.50  4.88  4.16
+## phi3  8.73  6.49  5.47</code></pre>
+<p>H0 racine unitaire non rejetée.</p>
 </div>
 </div>
 </div>
