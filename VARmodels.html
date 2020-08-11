@@ -492,8 +492,9 @@ y_{2}
 \varepsilon_{1} \\
 \varepsilon_{2}
 \end{array}\right]_{t}\]</span></p>
-<pre class="r"><code>Apoly= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
-Apoly</code></pre>
+<pre class="r"><code>#Apoly= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
+Apoly2= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
+Apoly2</code></pre>
 <pre><code>## , , 1
 ## 
 ##      [,1] [,2]
@@ -509,7 +510,7 @@ Apoly</code></pre>
 ## [3,]  0.7 -0.3</code></pre>
 <pre class="r"><code>B = diag (2)
 TRD=c(5,10)
-var2=ARMA(A=Apoly,B = B,TREND=TRD)
+var2=ARMA(A=Apoly2,B = B,TREND=TRD)
 
 set.seed(123456) 
 w = matrix(rnorm(1000),nrow = 500,ncol=2)
@@ -600,13 +601,40 @@ I_{K} &amp; 0 &amp; \ldots &amp; 0 &amp; 0 \\
 0 &amp; 0 &amp; \ldots &amp; I_{K} &amp; 0
 \end{array}\right]\]</span></p>
 <p>Attention <span class="math inline">\(y_{t},\nu, u_{t}, 0\)</span> sont déjà des vecteurs colonnes de dimension K; A est une matrice de dimension (K.p)² (matrice dite “par blocs”) qui est appelée “MATRICE COMPAGNON du processus” A ce prix on obtient une écriture équivalente: <span class="math display">\[Y_{t}=\mathbf{C}+\mathbf{A} Y_{t-1}+\mathbf{U}_{t}, t \in \mathbb{Z}\]</span> <strong>CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.</strong></p>
-<p>Ce sont ces valeurs propres qui seront soumises aux tests statistiques.<br />
-Dans la littérature traitant de ces tests on lit souvent l’expression “racines unitaires” (“units roots”), de quoi s’agit-t-il?<br />
+<div id="exemple" class="section level3">
+<h3>Exemple</h3>
+<p>Dans un premier temps nous créons une fonction qui retourne la matrice compagnon d’un VAR(p) simulé par VAR.sim.</p>
+<pre class="r"><code>companion=function(B) {
+N=nrow(B)
+C=ncol(B)
+if(floor(C/N)==C/N) { p=C/N ; BB=B} else # detection d&#39;une constante
+{ p=floor(C/N) 
+BB=B[,2:C]  # si constante
+}
+return(rbind(BB,cbind(diag(N*(p-1)),matrix(0,nrow=N*(p-1),ncol=N))))
+}</code></pre>
+<p>Appliquons la au VAR(2)</p>
+<pre class="r"><code>COMP=companion(B2)
+print(COMP)</code></pre>
+<pre><code>##      [,1] [,2] [,3] [,4]
+## [1,]  0.5  0.2 -0.3 -0.7
+## [2,] -0.2 -0.5 -0.1  0.3
+## [3,]  1.0  0.0  0.0  0.0
+## [4,]  0.0  1.0  0.0  0.0</code></pre>
+<pre class="r"><code>x=eigen(COMP,only.values=T)$values
+print(&quot;Modules des valeurs propres&quot;)</code></pre>
+<pre><code>## [1] &quot;Modules des valeurs propres&quot;</code></pre>
+<pre class="r"><code>print(sapply(x,abs),quote=F,digits=3)</code></pre>
+<pre><code>## [1] 0.818 0.597 0.572 0.572</code></pre>
+<p>Elles n’excèdent pas 0.818 , le processus VAR(2) est donc stable.</p>
+<p>On a pu ici les calculer exactement, car le processus est “préfabriqué”. Dans la réalité nous traiterons de processus ajustés sur des séries réelles, ce qui confèrera un caractère aléatoire à ces valeurs propres. Leur loi de probabilité étant déterminée ( Dickey et Fuller) on pourra tester l’hypothèse nulle “une au moins des valeurs propres a un module égal à 1” contre l’hypothèse alternative “tous les modules sont inférieurs à 1”.</p>
+<p>Dans la littérature on lit souvent l’expression “racines unitaires” (“units roots”), de quoi s’agit-t-il?<br />
 Lorsqu’on calcule les valeurs propres de A, la matrice compagnon, on résoud l’équation: <span class="math display">\[det(A-\lambda.Id)=0\]</span> Avec un peu d’algèbre linéaire et une manipulation de matrices par blocs on montre que l’équation ci-dessus est équivalante à <span class="math display">\[\operatorname{det}\left(\lambda^{p}.Id-A_{1} \lambda^{p-1}-A_{2} \lambda^{p-2}-\cdots-A_{p}\right)=0\]</span> Mais les statisticiens préfèrent que les exposants soient identiques aux indices, ce qui revient à poser <span class="math display">\[\lambda=\frac{1}{z} \]</span> ce qui donne: <span class="math display">\[\operatorname{det}\left(Id-A_{1} z-A_{2} z^{2}-\cdots-A_{p} z^{p}\right)=0\]</span> les solutions de cettes équations devant vérifier <span class="math inline">\(|z|&gt;1\)</span> .</p>
+</div>
 </div>
 <div id="tests-de-stationnarité" class="section level2">
 <h2>Tests de stationnarité</h2>
-<p>Au vu de ce qui précède, si une au moins des variables incluses dans le VAR n’est pas stationnaire, le VAR ne le sera pas. Donc il va s’agir de contrôler la stationnarité de chaque variable incluse dans le modèle VAR. Avant d’aborder les tests de stationnarité nous ferons un détour pour distiguer deux types de NON-stationnarité d’un processus univarié (ou d’une série univariée).</p>
+<p>Au vu de ce qui précède, si une au moins des variables incluses dans le VAR n’est pas stationnaire, le VAR ne le sera pas. Donc il va s’agir de contrôler la stationnarité de chaque variable qu’on veut inclure dans le modèle VAR. Avant d’aborder les tests de stationnarité nous ferons un détour pour distiguer deux types de NON-stationnarité d’un processus univarié (ou d’une série univariée).</p>
 <div id="non-stationnarité-déterministe" class="section level3">
 <h3>non stationnarité déterministe</h3>
 <p>C’est le cas où le processus est de la forme: <span class="math display">\[X_{t}=f(t)+Z_{t}\]</span> où <span class="math inline">\(Z_{t}\)</span> est stationnaire et f fonction vectorielle. Pour stationnariser un tel processus, il suffit de lui soustraire la tendance déterministe. Cette tendance est souvent <span class="math inline">\(f(t)=a+bt\)</span> ou <span class="math inline">\(f(t)=a+bt+ct^{2}\)</span><br />

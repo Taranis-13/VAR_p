@@ -154,11 +154,12 @@ y_{2}
 
 
 ```{r, simulate1,message=FALSE }
-Apoly= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
-Apoly
+#Apoly= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
+Apoly2= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
+Apoly2
 B = diag (2)
 TRD=c(5,10)
-var2=ARMA(A=Apoly,B = B,TREND=TRD)
+var2=ARMA(A=Apoly2,B = B,TREND=TRD)
 
 set.seed(123456) 
 w = matrix(rnorm(1000),nrow = 500,ncol=2)
@@ -304,10 +305,39 @@ Attention $y_{t},\nu, u_{t}, 0$ sont déjà des vecteurs colonnes de dimension K
 A est une matrice de dimension (K.p)² (matrice dite "par blocs") qui est appelée "MATRICE COMPAGNON du processus"
 A ce prix on obtient une écriture équivalente:
 $$Y_{t}=\mathbf{C}+\mathbf{A} Y_{t-1}+\mathbf{U}_{t}, t \in \mathbb{Z}$$
-**CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.**  
+**CONCLUSION: Le processus est stable si les valeurs propres de la marice compagnon sont strictement inférieures à 1.**
 
-Ce sont ces valeurs propres qui seront soumises aux tests statistiques.  
-Dans la littérature traitant de ces tests on lit souvent l'expression "racines unitaires" ("units roots"), de quoi s'agit-t-il?  
+### Exemple
+Dans un premier temps nous créons une fonction qui retourne la matrice compagnon d'un VAR(p) simulé par VAR.sim.
+
+```{r, fonction companion}
+companion=function(B) {
+N=nrow(B)
+C=ncol(B)
+if(floor(C/N)==C/N) { p=C/N ; BB=B} else # detection d'une constante
+{ p=floor(C/N) 
+BB=B[,2:C]  # si constante
+}
+return(rbind(BB,cbind(diag(N*(p-1)),matrix(0,nrow=N*(p-1),ncol=N))))
+}
+
+```
+
+Appliquons la au VAR(2)
+
+```{r, Matrice compagnon}
+COMP=companion(B2)
+print(COMP)
+x=eigen(COMP,only.values=T)$values
+print("Modules des valeurs propres")
+print(sapply(x,abs),quote=F,digits=3)
+```
+
+Elles n'excèdent pas 0.818 , le processus VAR(2) est donc stable.  
+
+On a pu ici les calculer exactement, car le processus est "préfabriqué". Dans la réalité nous traiterons de processus ajustés sur des séries réelles, ce qui confèrera un caractère aléatoire à ces valeurs propres. Leur loi de probabilité étant déterminée ( Dickey et Fuller) on pourra tester l'hypothèse nulle "une au moins des valeurs propres a un module égal à 1" contre l'hypothèse alternative "tous les modules sont inférieurs à 1". 
+  
+Dans la littérature on lit souvent l'expression "racines unitaires" ("units roots"), de quoi s'agit-t-il?  
 Lorsqu'on calcule les valeurs propres de A, la matrice compagnon, on résoud l'équation:
 $$det(A-\lambda.Id)=0$$ 
 Avec un peu d'algèbre linéaire et une manipulation de matrices par blocs on montre que l'équation ci-dessus est équivalante à $$\operatorname{det}\left(\lambda^{p}.Id-A_{1} \lambda^{p-1}-A_{2} \lambda^{p-2}-\cdots-A_{p}\right)=0$$
@@ -318,7 +348,7 @@ les solutions de cettes équations devant vérifier $|z|>1$ .
 
 ## Tests de stationnarité  
 
-Au vu de ce qui précède, si une au moins des variables incluses dans le VAR n'est pas stationnaire, le VAR ne le sera pas. Donc il va s'agir de contrôler la stationnarité de chaque variable incluse dans le modèle VAR.
+Au vu de ce qui précède, si une au moins des variables incluses dans le VAR n'est pas stationnaire, le VAR ne le sera pas. Donc il va s'agir de contrôler la stationnarité de chaque variable qu'on veut inclure  dans le modèle VAR.
 Avant d'aborder les tests de stationnarité nous ferons un détour pour distiguer deux types de NON-stationnarité d'un processus univarié (ou d'une série univariée).
 
 ### non stationnarité déterministe
