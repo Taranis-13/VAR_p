@@ -134,15 +134,15 @@ Ce polynôme retard interviendra lorsque nous aborderons la stationnarité des p
 
 ### Exemple d'un VAR(2)
 
-$$\left[\begin{array}{l}y_{1} \\y_{2}\end{array}\right]_{t}=\left[\begin{array}{c}5.0 \\10.0
+$$\left[\begin{array}{l}y_{1} \\y_{2}\end{array}\right]_{t}=\left[\begin{array}{c}2 \\6
 \end{array}\right]+\left[\begin{array}{cc}
-0.5 & 0.2 \\
--0.2 & -0.5
+0.4 & 0.2 \\
+-0.2 & -0.4
 \end{array}\right]\left[\begin{array}{l}
 y_{1} \\
 y_{2}
 \end{array}\right]_{t-1}+\left[\begin{array}{cc}
--0.3 & -0.7 \\
+-0.2 & 0.5 \\
 -0.1 & 0.3
 \end{array}\right]\left[\begin{array}{l}
 y_{1} \\
@@ -154,11 +154,10 @@ y_{2}
 
 
 ```{r, simulate1,message=FALSE }
-#Apoly= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
-Apoly2= array(c(1.0,-0.5,0.3,0,0.2,0.1,0,-0.2,0.7,1,0.5,-0.3),c(3,2,2))
+Apoly2= array(c(1.0,-0.4,0.2,0,0.2,0.1,0,-0.2,-0.5,1,0.4,-0.3),c(3,2,2))
 Apoly2
 B = diag (2)
-TRD=c(5,10)
+TRD=c(2,6)
 var2=ARMA(A=Apoly2,B = B,TREND=TRD)
 
 set.seed(123456) 
@@ -189,7 +188,7 @@ ts.plot(var1, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim")
 
 En introduisant la constante pour le Var(2)
 ```{r, VAR.sim2}
-B2<-rbind(c(5, 0.5, 0.2,-0.3,-0.7), c(10, -0.2, -0.5,-0.1,0.3))
+B2<-rbind(c(2, 0.4, 0.2,-0.2,0.5), c(6, -0.2, -0.4,-0.1,0.3))
 set.seed(123456)
 w = matrix(rnorm(1000),nrow = 500,ncol=2) 
 var2 <- VAR.sim(B=B2,n=500, lag=2,include="const",innov=w )
@@ -220,7 +219,7 @@ $$\gamma_{y_{1}}(h)=Cov(y_{1,t},y_{1,t-h})=E(y_{1,t}.y_{1,t-h})=E(\epsilon_{1,t}
 qui ne dépend pas de t, puisque  $\epsilon_{1,t}$ est bruit blanc (donc stationnaire).
 De même,
 $$\operatorname{Cov}\left(y_{2, t+h}, y_{2, t}\right)=E\left[y_{2, t+h} y_{2, t}\right]=E\left[\left(\varepsilon_{2, t+h}+(-1)^{t+h} \varepsilon_{1, t+h}\right)\left(\varepsilon_{2, t}+(-1)^{t} \varepsilon_{1, t}\right)\right]=\gamma_{\varepsilon_{2}}(h)+(-1)^{h} \gamma_{\varepsilon_{1}}(h)$$
-On peut constater sur le graphique ci-dssous.
+On peut constater visuellement la stationnarité des séries sur le graphique ci-dessous.
 
 ```{r, contrexemple}
 
@@ -333,7 +332,7 @@ print("Modules des valeurs propres")
 print(sapply(x,abs),quote=F,digits=3)
 ```
 
-Elles n'excèdent pas 0.818 , le processus VAR(2) est donc stable.  
+Elles n'excèdent pas 0.7980 , le processus VAR(2) est donc stable.  
 
 On a pu ici les calculer exactement, car le processus est "préfabriqué". Dans la réalité nous traiterons de processus ajustés sur des séries réelles, ce qui confèrera un caractère aléatoire à ces valeurs propres. Leur loi de probabilité étant déterminée ( Dickey et Fuller) on pourra tester l'hypothèse nulle "une au moins des valeurs propres a un module égal à 1" contre l'hypothèse alternative "tous les modules sont inférieurs à 1". 
   
@@ -366,8 +365,8 @@ Attention, il n'est pas a priori de la forme trend-stationary process. Nous en t
 
 ```{r, trend stationary}
 set.seed(123456)
-B2<-matrix(c(5,0.05, 0.7),nrow=1)
-vdat4=var(100,B=B2,lag=1,mod="trend")
+B4<-matrix(c(5,0.05, 0.7),nrow=1)
+vdat4=var(100,B=B4,lag=1,mod="trend")
 ts.plot(vdat4,type="l",col=c(1))
 
 lm=lm(vdat4~c(1:100))
@@ -385,8 +384,8 @@ Simulons l'exemple $Y{t}=Y_{t-1}+0.1+\epsilon_{t}$ (marche aléatoire avec déri
 
 ```{r, DS}
 set.seed(123456)
-B2<-matrix(c(0.3, 1),nrow=1)
-vdat5=var(100,B=B2,lag=1,mod="const")
+B5<-matrix(c(0.3, 1),nrow=1)
+vdat5=var(100,B=B5,lag=1,mod="const")
 ts.plot(vdat5,type="l",col=c(1),ylim=c(-10,60),main="marche aléatoire et sa différentielle")
 
 diff_vdat5=diff(vdat5,lag=1,differences=1)
@@ -444,7 +443,7 @@ summary(ur.df(vdat6,type="trend",lags=1))
 Les conclusions sont irrévocables:  -6.1567 
 donc H0 racine unitaire rejetée, 28.8 H01 racine unitaire ET trend nul rejeté, 19.56 H02 racine unitaie ET trend nul ET constante nulle rejeté. Il faut avouer que la lecture des coefficients nous donne une vision claire du modèle: pas de racine unitaire, un trend ET une constante significatifs, donc STATONNAIRE AUTOUR D'UN TREND.
 
-Voyons le modèle 2 sans trend. Mais volontairement testons un modèle de type  sans trend.
+Voyons le modèle 2 sans trend. Mais volontairement testons un modèle de type  avec trend.
 
 $$Y{t}=5++0.7Y_{t-1}+\epsilon_{t}$$
 ```{r, Dickey-Fuller 2}
@@ -472,7 +471,39 @@ vdat8=var(100,B=B2,lag=1,mod="trend")
 
 summary(ur.df(vdat8,type="trend",lags=1))
 ```
-H0 racine unitaire non rejetée.
+H0 racine unitaire non rejetée, nullité des deux autres coefficients rejetée, donc racine unitaire avec trend et constante.  
 
+## Estimation d'un modèle VAR
 
+Nous allons commencer par étudier un processus simulé. Par exemple  VAR(2) sera notre base de données.
+
+### première étape: s'assurer de la stationnarité des composantes.
+
+```{r, test}
+summary(ur.df(vardat[,"y1"],type="drift",lags=1))
+summary(ur.df(vardat[,"y2"],type="drift",lags=1))
+```
+
+### recherche d'un décalage adapté.
+```{r, recherche_lag}
+lag=lags.select(vardat,lag.max =4,include="const")
+print(lag)
+```
+
+Nous choisissons un VAR(2)
+
+### estimation du modèle.
+
+```{r, estimation, message=FALSE,warning=FALSE}
+library(vars)
+varest= VAR(vardat,p = 2,type ="const",season = NULL,exogen = NULL)
+print(varest)
+```
+Nous y retrouvons une estimation correcte des coefficients du VAR(2) initial.
+
+On peut contôler la stabilité du modèle estimé par la fonction "roots"
+```{r, racines_unitaires}
+roots=roots(varest)
+roots
+```
 
