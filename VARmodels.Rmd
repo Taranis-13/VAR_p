@@ -14,7 +14,6 @@ rm(list=ls())
 ```
 
 ```{r, library, message=F, warning=F}
-
 library("dse")
 library("urca")
 library("tsDyn")
@@ -42,6 +41,7 @@ connu par le premier "choc" $\epsilon_{1}$. Nos simulations prendrons en génér
 
 Nous créons une fonction pour générer des processous VAR(p), non pas pour rivaliser avec les fonctions intégrées de R (VAR.sim ou simulate) mais pour mettre en évidence les calculs matriciels nécssaire à la génération.
 Nous la nommerons var(), elle prendra en paramètres n le nombre d'observations du processus, la matrice A si nécessaire, B, p l'ordre du var (la fonction est encore en constructioin et fonctionne par défaut avec p=1) et le mode "const" ou "none" suivant qu'il y ait $B_{0}$ ou non.
+Cette fonction ne permet (pour l'instant) que de générer des VAR(1) et des bruits blancs gaussiens non corrélés.
 
 ```{r, var}
 var=function(n,A=diag(nrow(B)) , B,lag=1,mod=c("const","none","trend")){
@@ -102,30 +102,30 @@ Cette fonction simule un VAR(p) dont les coefficients sont préalablement défin
 Pour saisir correctement les coefficients il faut écrire le processus de la façon suivante:  
 $$Id.X_{t}-\sum_{i=1}^{p} B_{i} X_{t-i}=B_{0}+\varepsilon_{t}$$       
 et saisir les coefficients de chaque matrice (sans oublier Id !!!) dans l'ordre L1C1, L2C1, L1C2, L2C2...dans une array de 2 sous matrices 2*2...!! .
-On peut imposer une matrice B de covariance sur les bruits blancs (ici ce sera Id)
+On peut imposer une matrice B correspondant à un polynôme MA. S'il n'y a pas de composante MA autre que $\varepsilon_{t}$ B est l'identité.
 Le vecteur constante correspond au paramètre TREND lorsqu'il est utilisé.
 
 
-Nous allons retrouver les deux processus générés par notre foncton (à condition d'utiliser la même séquence de bruits blancs)
+Nous allons retrouver les deux processus générés par notre fonction (à condition d'utiliser la même séquence de bruits blancs)
 
 ```{r, simulate2, message=FALSE,warning=FALSE}
 Apoly= array(c(1,-0.7,0,-0.2,0,-0.2,1,-0.7),c(2,2,2))  
-B = diag (2)
-var1=ARMA(A=Apoly,B = B) # 
+B = diag(2)
+var1=ARMA(A=Apoly,B=B)  
 set.seed( 123456)
 w = matrix(rnorm(200),nrow = 100,ncol=2)
-varsim= simulate(var1,sampleT = 100,noise = w )
+varsim1= simulate(var1,sampleT = 100,noise = w)  
 
-vardat=matrix(varsim$output,nrow = 100,ncol=2)
-head(vardat)
-colnames(vardat)=c( "y1", "y2")
-ts.plot(vardat, type="l", col=c(1,2),main="Exemple 1 avec simulate sans constante")
+vardat1=matrix(varsim1$output,nrow = 100,ncol=2)
+head(vardat1)
+colnames(vardat1)=c( "y1", "y2")
+ts.plot(vardat1, type="l", col=c(1,2),main="Exemple 1 avec simulate sans constante")
 
 TRD=c(0.5,0.8)
 var11=ARMA(A=Apoly,B = B,TREND=TRD)
-varsim= simulate(var11,sampleT = 100,noise = w )
-vardat=matrix(varsim$output,nrow = 100,ncol=2)
-ts.plot(vardat, type="l", col=c(1,2),main="Exemple 1 avec simulate avec constante")
+varsim11= simulate(var11,sampleT = 100,noise = w )
+vardat11=matrix(varsim11$output,nrow = 100,ncol=2)
+ts.plot(vardat11, type="l", col=c(1,2),main="Exemple 1 avec simulate avec constante")
 ```
 
 L'écriture du processus sous la seconde forme permet de faire apparaître le "polynôme des retards". En effet on nomme L l'opérateur défini par $L(X_{t})=X_{t-1}$ (qui est linéaire ). Par voie de conséquence on aura $L^{p}(X_{t})=X_{t-p}$ , à ce compte là on peut écrire $$Id.X_{t}-\sum_{i=1}^{p} B_{i} X_{t-i}=B_{0}+\varepsilon_{t}=(Id-\sum_{i=1}^{p}B_{i}L^{i})X_{t}=B_{0}+\varepsilon_{t}$$  
@@ -152,21 +152,24 @@ y_{2}
 \varepsilon_{2}
 \end{array}\right]_{t}$$
 
+Nous introduisons dans ce modèle une corrélation entre les bruits blancs définie par la matrice $\left[\begin{array}{cc}1 & 0.3 \\0.3 & 1\end{array}\right]$
+
 
 ```{r, simulate1,message=FALSE }
 Apoly2= array(c(1.0,-0.4,0.2,0,0.2,0.1,0,-0.2,-0.5,1,0.4,-0.3),c(3,2,2))
 Apoly2
 B = diag (2)
+C=matrix(c(1,0.3,0.3,1),2)
 TRD=c(2,6)
 var2=ARMA(A=Apoly2,B = B,TREND=TRD)
 
 set.seed(123456) 
-w = matrix(rnorm(1000),nrow = 500,ncol=2)
+#w = matrix(rnorm(1000),nrow = 500,ncol=2)
 
-varsim= simulate(var2,sampleT = 500,noise = w )
-vardat=matrix(varsim$output,nrow = 500,ncol=2)
-colnames(vardat)=c( "y1","y2")
-plot.ts( vardat,main ="VAR(2) avec simulate", xlab ="’’")
+varsim2= simulate(var2,sampleT = 500,Cov=C )
+vardat2=matrix(varsim2$output,nrow = 500,ncol=2)
+colnames(vardat2)=c( "y1","y2")
+plot.ts( vardat2,main ="VAR(2) avec simulate", xlab ="’’")
 
 ```
 
@@ -473,6 +476,7 @@ summary(ur.df(vdat8,type="trend",lags=1))
 ```
 H0 racine unitaire non rejetée, nullité des deux autres coefficients rejetée, donc racine unitaire avec trend et constante.  
 
+
 ## Estimation d'un modèle VAR
 
 Nous allons commencer par étudier un processus simulé. Par exemple  VAR(2) sera notre base de données.
@@ -480,13 +484,13 @@ Nous allons commencer par étudier un processus simulé. Par exemple  VAR(2) ser
 ### première étape: s'assurer de la stationnarité des composantes.
 
 ```{r, test}
-summary(ur.df(vardat[,"y1"],type="drift",lags=1))
-summary(ur.df(vardat[,"y2"],type="drift",lags=1))
+summary(ur.df(vardat2[,"y1"],type="drift",lags=1))
+summary(ur.df(vardat2[,"y2"],type="drift",lags=1))
 ```
 
 ### recherche d'un décalage adapté.
 ```{r, recherche_lag}
-lag=lags.select(vardat,lag.max =4,include="const")
+lag=lags.select(vardat2,lag.max =4,include="const")
 print(lag)
 ```
 
@@ -496,14 +500,69 @@ Nous choisissons un VAR(2)
 
 ```{r, estimation, message=FALSE,warning=FALSE}
 library(vars)
-varest= VAR(vardat,p = 2,type ="const",season = NULL,exogen = NULL)
-print(varest)
+varest2= VAR(vardat2,p = 2,type ="const",season = NULL,exogen = NULL)
+print(varest2)
 ```
 Nous y retrouvons une estimation correcte des coefficients du VAR(2) initial.
 
 On peut contôler la stabilité du modèle estimé par la fonction "roots"
 ```{r, racines_unitaires}
-roots=roots(varest)
+roots=roots(varest2)
 roots
 ```
+### tests sur les résidus
 
+D'abord tester l'absence d'autocorrélations sur les résidus (Test dit du "Portementeau") adapté aux séries multivariées ("serial.test")
+
+```{r, portemanteau }
+var.test2= serial.test(varest2,lags.pt =16,type ="PT.asymptotic")
+var.test2
+plot(var.test2,names="y1")
+plot(var.test2,names="y2")
+
+```
+Puis test de normalité (test de Jarque-Bera).
+
+```{r, normalité}
+var.norm2=normality.test(varest2,multivariate.only = TRUE)
+var.norm2
+```
+
+### Prédiction
+
+Notre modèle VAR(2) une fois validé, nous pouvons l'utiliser pour la prédiction.
+Nous fixons un horizon à 8, et traçons les prédictions suivant les 50 dernières valeurs ddes séries.
+On observera aussi une petite fantaisie avec la fonction "fanchart".
+
+```{r,  prediction}
+pred2 = predict(varest2,n.ahead =8 ,ci = 0.95)
+print(pred2)
+plot(pred2,names="y1",xlim=c(450,508))
+plot(pred2,names="y2",xlim=c(450,508))
+fanchart(pred2,names = "y2",xlim=c(450,508))
+```
+
+### Causalités
+
+Il nous faut expliquer dans un premier temps ce qu'on entend par causalité au sens de Granger.
+En voici la définition:
+Soit deux processus $\left(X_{t}\right)$ et $\left(Y_{t}\right)$, en notant $\underline{X}_{t}=\left\{X_{t}, X_{t-1}, \ldots\right\}$ et $\underline{Y}_{t}=\left\{Y_{t}, Y_{t-1}, \ldots\right\}$ les passés de $\left(X_{t}\right)$ et de $\left(Y_{t}\right)$ ,on dit que $\left(Y_{t}\right)$ cause $\left(X_{t}\right)$ à la date t si et seulement si $$\mathbb{E}\left(X_{t} | \underline{X}_{t-1}, \underline{Y}_{t-1}\right) \neq \mathbb{E}\left(X_{t} | \underline{X}_{t-1}\right)$$  
+
+Autrement dit, Y cause X si la connaissance du passé de Y  modifie  le comportement de $\(X_{t}\right)$ 
+Il s'agit d'une causalité de long terme.
+
+Le test de causalité va correspondre à un test de Wald sur les coefficients estimés. Pour déterminer si y2 cause y1 on teste la nullité des coefficients de y2 dans l'expression de y1.
+
+Parallèlement on utilise la causalité instantannée.  
+
+$\left(Y_{t}\right)$ cause instantanément $\left(X_{t}\right)$ à la date t si et seulement si $$\mathbb{E}\left(X_{t} | \underline{X}_{t-1}, \underline{Y}_{t-1}\right) \neq \mathbb{E}\left(X_{t} | \underline{X}_{t-1}, \underline{Y}_{t}\right)$$  
+
+l'introduction de Y à l'instant t (présent) dans le membre de droite de l'inégalité modifie le comportement de X (connaissant les passés de X et Y)
+
+```{r, causalité}
+var.causal2=causality( varest2, cause = "y2")
+var.causal2
+```
+
+Nous rejetons les deux hypothèses de non causalité, et concluons à une double causalité (Granger et instantannée).  
+Cette dernière est due au fait que nous avons simulé un VAR(2) avec des bruits blancs corrélés.
