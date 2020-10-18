@@ -17,6 +17,7 @@ rm(list=ls())
 library("dse")
 library("urca")
 library("tsDyn")
+library("stringr")
 ```
 ## Prologue
 
@@ -157,15 +158,11 @@ Nous introduisons dans ce modèle une corrélation entre les bruits blancs défi
 
 ```{r, simulate1,message=FALSE }
 Apoly2= array(c(1.0,-0.4,0.2,0,0.2,0.1,0,-0.2,-0.5,1,0.4,-0.3),c(3,2,2))
-Apoly2
 B = diag (2)
 C=matrix(c(1,0.3,0.3,1),2)
 TRD=c(2,6)
 var2=ARMA(A=Apoly2,B = B,TREND=TRD)
-
 set.seed(123456) 
-#w = matrix(rnorm(1000),nrow = 500,ncol=2)
-
 varsim2= simulate(var2,sampleT = 500,Cov=C )
 vardat2=matrix(varsim2$output,nrow = 500,ncol=2)
 colnames(vardat2)=c( "y1","y2")
@@ -192,9 +189,9 @@ ts.plot(var1, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim")
 En introduisant la constante pour le Var(2)
 ```{r, VAR.sim2}
 B2<-rbind(c(2, 0.4, 0.2,-0.2,0.5), c(6, -0.2, -0.4,-0.1,0.3))
+C=matrix(c(1,0.3,0.3,1),2)
 set.seed(123456)
-w = matrix(rnorm(1000),nrow = 500,ncol=2) 
-var2 <- VAR.sim(B=B2,n=500, lag=2,include="const",innov=w )
+var2 <- VAR.sim(B=B2,n=500, lag=2,include="const",varcov=C )
 plot.ts( var2,main ="VAR(2) avec VAR.sim", xlab ="’’")
 ```
 
@@ -560,9 +557,215 @@ $\left(Y_{t}\right)$ cause instantanément $\left(X_{t}\right)$ à la date t si 
 l'introduction de Y à l'instant t (présent) dans le membre de droite de l'inégalité modifie le comportement de X (connaissant les passés de X et Y)
 
 ```{r, causalité}
-var.causal2=causality( varest2, cause = "y2")
-var.causal2
+causal2=causality( varest2, cause = "y2")
+causal2
 ```
 
 Nous rejetons les deux hypothèses de non causalité, et concluons à une double causalité (Granger et instantannée).  
 Cette dernière est due au fait que nous avons simulé un VAR(2) avec des bruits blancs corrélés.
+
+
+
+### Fonction de réponse impulsionnelle
+
+Nous allons préciser l'impact d'un choc sur une variable sur l'autre (et réciproquement) et suivre son évolution dans le temps. La méthode consiste à simuler la valeur 1 pour $\epsilon_{1t}$ et en représenter la conséquence sur y2 par exemple sur 10 périodes. La fonction irf permet de réaliser une seule impulsion (boot=F), ou de répéter plusieurs fois l'opération (boot=T). L'option impulse = F montre l'effet du choc $\epsilon_{1t}$ sur $\epsilon_{2t}$ , alors que impulse = T montre l'effet sur Y2.
+```{r, réponse impulsionnelle}
+imp_inst.y1=irf(varest2,impulse ="y1",response="y2",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
+plot(imp_inst.y1)
+imp_cum.y1=irf(varest2,impulse ="y1",response="y2",n.ahead=10,ortho=FALSE,cumulative=T,boot=T,seed=12345)
+plot(imp_cum.y1)
+imp_inst.y2=irf(varest2,impulse ="y2",response="y1",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
+plot(imp_inst.y2)
+imp_cum.y2=irf(varest2,impulse ="y2",response="y1",n.ahead=10,ortho=FALSE,cumulative=T,boot=T,seed=12345)
+plot(imp_cum.y2)
+
+
+```
+L'exemple montre un effet de diminition su Y2 et inverse sur y1.
+
+## Application sur 4 séries temporelles.
+
+Nous tenterons d'appliquer le modèle VAR sur l'évolution des actions Total et Engie, du Cac_40 et de taux de change euro-dollar sur une année, en données journalières (septembre 2019 à septembre 2020). Du fait de l'épidémie surgie en début 2020 une rupture importante se produit début avril. L'étude commencera donc à cette période (2020-03-25).
+
+```{r, load datas, echo=FALSE}
+data=read.table(file="Action_Total.txt",sep="\t",header=T,dec=".")
+h=5 # horizon de predict
+l=dim(data)[1]-h 
+deb=135  # début des données utilisées: 2020-03-25
+data.train=data[deb:l,]
+plot.ts(data.train[,-1],col="blue")
+
+```
+Les séries ne sont certainement pas stationnaires, ce que confirment les test de Dickey-Fuller.
+
+```{r, Dickey, echo=FALSE,results='hide'}
+for(i in c("Total","Engie","Cac_40" ,"Taux_Change")) 
+{ print(i)
+  print(summary(ur.df(data.train[,i],type="drift",lag=2)))
+}
+```
+Nous allons différencier les variables ( $\Delta X_{t}=X_{t}- X_{t-1}$), et tenter un modèle VAR sur ces nouvelles variables ("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change") , après avoir vérifié leur stationnarité.
+
+```{r, diff, results='hide'}
+Ddata.train=data.frame(matrix(NA,nrow=l-deb,ncol=0))
+for(i in c("Total","Engie","Cac_40" ,"Taux_Change")) 
+{ 
+  print(summary(ur.df(diff(data.train[,i],lag=1,differences=1),type="none",lag=1)))
+  Ddata.train[,i]=diff(data.train[,i],lag=1,differences=1)
+}
+colnames(Ddata.train)=c("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change")
+plot.ts(Ddata.train)
+
+head(Ddata.train[,c(1,3)],20)
+```
+A ce stade nous devons examiner la cointégration des séries.
+
+## Cointégration
+
+Quelques définitions d'abord.
+
+### Série intégrée d'ordre d:
+Une série chronologique est dite *intégrée d'ordre d* si d est le plus petit entier tel que $\Delta^{d} X_{t}$ est stationnaire.
+
+Les quatre séries de notre exemple son intégrées d'ordre 1 (on écrit I(1) )
+
+### Séries cointégrées d'ordre d:
+Une famille de séries intégrées  intégrées d'ordre d sont dites cointégrées d'ordre  C(d,0) ssi  il existe une combinaison linéaire de ces séries qui soit stationnaire.
+
+Le test de Johansen permet de déterminer l'éventuelle cointégration.
+
+Avant de procéder au test montrons le rôle que joue cette cointégration dans le modèle VAR.
+
+On se place dans le cas de N variables intégrées I(1), et pour faciliter la compréhension de notre démonstration, nous n'envisageons qu'un VAR(2), mais la généralisation à l'ordre p ne fait aucune difficulté.  
+Puisque nos variables sont I(1), leurs différentielles sont stationnaires, et donc bonnes candidates pour un VAR.  
+Partons de l'expression VAR.
+
+$$X_{t}=A_{0}+A_{1} X_{t-1}+A_{2} X_{t-2}+\varepsilon_{t}$$
+D'où, en retranchant $X_{t-1}$ aux deux memebres de l'égalité. 
+$$X_{t}-X_{t-1}=A_{0}+\left(A_{1}-I\right) X_{t-1}+A_{2} X_{t-2}+\varepsilon_{t}$$
+$$\Longleftrightarrow \Delta X_{t}=A_{0}+\left(A_{1}-I\right)\left(X_{t-1}-X_{t-2}\right)+\left(A_{2}+A_{1}-I\right) X_{t-2}+\varepsilon_{t}$$
+En utilisant maintenant $X_{t-2}$  
+$$\Delta Y_{t}=\mu+(A_{1}-Id)( Y_{t-1}-Y_{t-2})+(A_{1}-Id)Y_{t-2}+A_{2} Y_{t-2}+u_{t}$$ 
+Enfin;
+$$\Longleftrightarrow \Delta X_{t}=A_{0}+\left(A_{1}-I\right) \Delta X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-2}+\varepsilon_{t}$$
+Là on retranche et rajoute $\left(A_{2}+A_{1}-I\right) X_{t-1} $
+$$\begin{aligned}
+\Delta X_{t}=& A_{0}+\left(A_{1}-I\right) \Delta X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-2}
+-\left(A_{2}+A_{1}-I\right) X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-1}+\varepsilon_{t}
+\end{aligned}$$
+Pour obtenir
+$$\Delta X_{t}=A_{0}-A_{2} \Delta X_{t-1}+\left(A_{1}+A_{2}-I\right) X_{t-1}+\varepsilon_{t}$$
+Ou en renommant les matrices
+$$\Delta X_{t}=B_{0}+B_{1} \Delta X_{t-1}+\Pi X_{t-1}+\varepsilon_{t}$$
+A ce stade plusieurs cas vont se présenter suivant le rang de la matrice $\Pi$ 
+
+* $rang(\Pi)=0$ La matrice est nulle, donc le VAR sur les séries différenciées se déroule normalement.
+* $rang(\Pi)=N$ La matrice est inversible, donc 
+
+$$X_{t-1}=\Pi^{-1}\left(\Delta X_{t}-B_{0}-B_{1} \Delta X_{t-1}-\epsilon_{t}\right)$$ 
+$X_{t-1}$ serait égal à une transformation linéaire de variables stationnaires, donc serait elle même stationnaire, ce qui n'est pas vrai dans notre contexte.
+
+* $rang(\Pi)=1$ 
+Dans ce cas l'image de $\Pi$ est de dimension 1 engendrée par un vecteur u. Une bonne connaisssance de l'algèbre linéaire permet de démontrer que $\Pi=u.l$ où l est un vecteur ligne $l=(l_{1},l_{2},...l_{N})$
+Tous calculs faits (faites les !!) on a $\Pi X_{t-1}=\left (\sum l_{i}X_{i_{t-1}}\right)u$ qu'on peut écrire
+$\lambda_{t-1}u$ avec $\lambda_{t-1}$ processus univarié stationnaire (la stationnarité de $\lambda_{t-1}$ résulte de l'écriture du VAR sous la forme  
+$\Delta Engle,R.E. & Granger,C.W.J. (1987). ’Cointegration and error-correction : representation, estimation
+and testing’. Econometrica. 55=B_{0}+B_{1} \Delta X_{t-1}+\lambda_{t-1}u+\varepsilon_{t}$ )
+De plus $\sum l_{i}X_{i_{t-1}}$ étant stationnaire, on obtient une relation de cointégration des variables.
+
+
+Dans ce cas $\Pi X_{t-1}$ est un vecteur de N coordonnées proportionnelles du type $\lambda_{t-1}u$ u vecteur constant de N coordonnées et $\lambda_{t-1}$ processus univarié stationnaire (la stationnarité de $\lambda_{t-1}$ résulte de l'écriture du VAR sous la forme  
+$\Delta X_{t}=B_{0}+B_{1} \Delta X_{t-1}+\lambda_{t-1}u+\varepsilon_{t}$ )
+On voit alors que chaque coordonnée j de $\Pi X_{t-1}$ est $\sum_{i}a_{i}X_{i_{t-1}}=\lambda_{t-1}u_{j}$
+Ce qui indique que les $ X_{i_{t}}$ sont cointégrés d'ordre 1. 
+En plus on peut réécrire $\Pi X_{t-1}$ sous la forme $u^{'}AX_{t-1}$ où A est la matrice-colonne des coefficients de la relation de cointégration. u est appelé force de rappel vers l'équilibre de long terme.
+
+* $rang(\Pi)=r$ 
+
+Granger montre (Engle,R.E. & Granger,C.W.J. (1987). ’Cointegration and error-correction : representation, estimation
+and testing’. Econometrica. 55 ) que dans ce cas il existe deux matrices de rang r $U$ et $V$ telles que $\Pi=U.V^{'}$ telles que $V^{'}X_{t}$ est stationnaire, chaque colonne de V étant un vecteur de cointégration. (il y a donc r rlations de cointégration).
+
+
+```{r, test Johansen}
+test=ca.jo(data.train[,c(2,4,5)], type="trace", K=3, ecdet="none", spec="longrun")
+summary(test)
+
+```
+Il apparaît qu'avec 4 variables il y a une relation de cointégration, en effet r=0 est rejeté, mais r<=1 ne l'est pas, on peut donc conclure r=1.
+
+
+## Modèle VAR sur les trois variables "Total","Cac_40","Taux_Change"
+
+
+```{r, test Johansen2}
+test=ca.jo(data.train[,c("Total","Cac_40","Taux_Change")], type="trace", K=3, ecdet="none", spec="longrun")
+summary(test)
+
+```
+Cette fois-ci r=0 n'est pas rejetable. Donc l'absence de cointégration rend licite l'utilisation du modèle VAR sur les différentielles premières.
+
+### recherche d'un décalage adapté.
+```{r, recherche_lag2}
+colnames(Ddata.train)=colnames(data.train[,2:5])
+Def=Ddata.train[,c("Total","Cac_40","Taux_Change")]
+lag=lags.select(Def,lag.max =4,include="none")
+print(lag)
+```
+Nous retenons un VAR(1).
+
+## Estimation du modèle, racines unitaires et test sur les résidus
+
+```{r, modèle}
+varModel= VAR(Def,p = 1,type ="none",season = NULL,exogen = NULL)
+print(varModel)
+roots=roots(varModel)
+roots
+varModel.test= serial.test(varModel,lags.pt =16,type ="PT.asymptotic")
+varModel.test
+
+par(mfrow=c(3,1))
+hist(resid(varModel)[,1],breaks=c(-3,-2,-1,0,1,2,3))
+hist(resid(varModel)[,2])
+hist(resid(varModel)[,3])
+par(mfrow=c(3,1))
+acf(resid(varModel)[,1],lag=10)
+acf(resid(varModel)[,2],lag=10)
+acf(resid(varModel)[,3],lag=10)
+par(mfrow=c(3,1))
+pacf(resid(varModel)[,1],lag=10)
+pacf(resid(varModel)[,2],lag=10)
+pacf(resid(varModel)[,3],lag=10)
+```
+La normalité de résidus semble convenable (sauf pour "Total"), et surtout l'absence d'auto corrélation est acquise.
+
+
+```{r, causality}
+causal.varModel=causality( varModel, cause =c("Cac_40","Taux_Change") )
+causal.varModel
+
+causal.varModel=causality( varModel, cause =c("Total","Taux_Change") )
+causal.varModel
+
+causal.varModel=causality( varModel, cause =c("Cac_40","Total") )
+causal.varModel
+
+
+```
+
+Seule une causalité instantannée des accroissements des deux variables "Cac_40","Taux_Change" sur les accroissements "Total" est à retenir.
+
+```{r, réponse impulsionnelle Total}
+imp_inst.Total=irf(varModel,impulse ="Cac_40",response="Total",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
+plot(imp_inst.Total)
+imp.Total2=irf(varModel,impulse ="Taux_Change",response="Total",n.ahead=10,ortho=FALSE,cumulative=T,boot=T,seed=12345)
+plot(imp.Total2)
+imp_inst.Cac_40=irf(varModel,impulse ="Total",response="Cac_40",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
+plot(imp_inst.Cac_40)
+
+cor(Ddata.train$Total,Ddata.train$Cac_40)  # ????
+
+```
+
+
+
+
