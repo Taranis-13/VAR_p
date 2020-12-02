@@ -18,6 +18,7 @@ library("dse")
 library("urca")
 library("tsDyn")
 library("stringr")
+library("lubridate")
 ```
 ## Prologue
 
@@ -583,40 +584,55 @@ plot(imp_cum.y2)
 ```
 L'exemple montre un effet de diminition su Y2 et inverse sur y1.
 
-## Application sur 4 séries temporelles.
+## Application sur 5 séries temporelles.
 
-Nous tenterons d'appliquer le modèle VAR sur l'évolution des actions Total et Engie, du Cac_40 et de taux de change euro-dollar sur une année, en données journalières (septembre 2019 à septembre 2020). Du fait de l'épidémie surgie en début 2020 une rupture importante se produit début avril. L'étude commencera donc à cette période (2020-03-25).
+Nous tenterons d'appliquer le modèle VAR sur l'évolution des actions Total et Engie, du Cac_40, du cours du pétrole Brent (pétrole de la Mer du Nord) et de taux de change euro-dollar sur une année, en données journalières (septembre 2019 à septembre 2020). Du fait de l'épidémie surgie en début 2020 une rupture importante se produit début avril. L'étude commencera donc à cette période (2020-03-25).
 
 ```{r, load datas, echo=FALSE}
-data=read.table(file="Action_Total.txt",sep="\t",header=T,dec=".")
+library(dplyr)
+data=read.table(file="Action_Total_Brent.txt",sep="\t",header=T,dec=".")
+head(data)
 h=5 # horizon de predict
 l=dim(data)[1]-h 
-deb=135  # début des données utilisées: 2020-03-25
+deb=136  # début des données utilisées: 2020-03-25
 data.train=data[deb:l,]
 plot.ts(data.train[,-1],col="blue")
+data.test=data[(l+1):(l+5),]
+m=colMeans(data.train[,-1])
+s=apply(data.train[,-1],2,sd)
+#data.train=as.data.frame(cbind(data.train$Date,data.frame(Date,scale(data.train[,-1],center=T,scale=T))))
+data.train.CR=data.frame(data.train$Date,scale(data.train[,-1],center=T,scale=T))
+colnames(data.train.CR)=c("Date",colnames(data.train[,-1]))
+data.test.CR=data.frame(data.test[,1],scale(data.test[,-1],center=m,scale=s))
+colnames(data.test.CR)=c("Date",colnames(data.test[,-1]))
 
 ```
-Les séries ne sont certainement pas stationnaires, ce que confirment les test de Dickey-Fuller.
+Les 4 dernières séries ne sont certainement pas stationnaires, ce que confirment les test de Dickey-Fuller.
+La première variable "Total" mérite un traitement à part, elle ne présente pas de trend évident, donc nous lui soumettrons le modèle "drift".
 
-```{r, Dickey, echo=FALSE,results='hide'}
-for(i in c("Total","Engie","Cac_40" ,"Taux_Change")) 
+
+```{r, Dickey}
+print("Total")
+print(summary(ur.df(data.train.CR$Total,type="drift",lag=1)))
+for(i in c("Engie","Cac_40" ,"Taux_Change","Brent")) 
 { print(i)
-  print(summary(ur.df(data.train[,i],type="drift",lag=2)))
+  print(summary(ur.df(data.train.CR[,i],type="trend",lag=2)))
 }
+
 ```
-Nous allons différencier les variables ( $\Delta X_{t}=X_{t}- X_{t-1}$), et tenter un modèle VAR sur ces nouvelles variables ("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change") , après avoir vérifié leur stationnarité.
+
+
+Nous allons différencier les variables ( $\Delta X_{t}=X_{t}- X_{t-1}$), et tenter un modèle VAR sur ces nouvelles variables ("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change","D.Brent) , après avoir vérifié leur stationnarité.
 
 ```{r, diff, results='hide'}
-Ddata.train=data.frame(matrix(NA,nrow=l-deb,ncol=0))
-for(i in c("Total","Engie","Cac_40" ,"Taux_Change")) 
-{ 
-  print(summary(ur.df(diff(data.train[,i],lag=1,differences=1),type="none",lag=1)))
-  Ddata.train[,i]=diff(data.train[,i],lag=1,differences=1)
-}
-colnames(Ddata.train)=c("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change")
-plot.ts(Ddata.train)
+Ddata.train=apply(data.train.CR[,-1],2,diff)
+colnames(Ddata.train)=c("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change","D.Brent")
 
-head(Ddata.train[,c(1,3)],20)
+for(i in c("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change","D.Brent")) { 
+    print(i)
+    print(summary(ur.df(Ddata.train[,i],type="none",lag=1)))
+}
+plot.ts(Ddata.train)
 ```
 A ce stade nous devons examiner la cointégration des séries.
 
@@ -687,33 +703,23 @@ and testing’. Econometrica. 55 ) que dans ce cas il existe deux matrices de ra
 
 
 ```{r, test Johansen}
-test=ca.jo(data.train[,c(2,4,5)], type="trace", K=3, ecdet="none", spec="longrun")
+test=ca.jo(data.train.CR[,c(-1)], type="trace", K=3, ecdet="none", spec="longrun")
 summary(test)
 
 ```
-Il apparaît qu'avec 4 variables il y a une relation de cointégration, en effet r=0 est rejeté, mais r<=1 ne l'est pas, on peut donc conclure r=1.
+Il apparaît qu'avec 5 variables  r=0 n'est est pas rejeté
 
-
-## Modèle VAR sur les trois variables "Total","Cac_40","Taux_Change"
-
-
-```{r, test Johansen2}
-test=ca.jo(data.train[,c("Total","Cac_40","Taux_Change")], type="trace", K=3, ecdet="none", spec="longrun")
-summary(test)
-
-```
-Cette fois-ci r=0 n'est pas rejetable. Donc l'absence de cointégration rend licite l'utilisation du modèle VAR sur les différentielles premières.
+## Modèle VAR sur les cinq variables
 
 ### recherche d'un décalage adapté.
 ```{r, recherche_lag2}
-colnames(Ddata.train)=colnames(data.train[,2:5])
-Def=Ddata.train[,c("Total","Cac_40","Taux_Change")]
+Def=Ddata.train
 lag=lags.select(Def,lag.max =4,include="none")
 print(lag)
 ```
 Nous retenons un VAR(1).
 
-## Estimation du modèle, racines unitaires et test sur les résidus
+## Estimation du modèle, racines unitaires et test sur les résidus, y compris sur leur normalité par le test de Jarque-Bera
 
 ```{r, modèle}
 varModel= VAR(Def,p = 1,type ="none",season = NULL,exogen = NULL)
@@ -722,19 +728,13 @@ roots=roots(varModel)
 roots
 varModel.test= serial.test(varModel,lags.pt =16,type ="PT.asymptotic")
 varModel.test
+plot(varModel.test,names="D.Total")
+plot(varModel.test,names="D.Engie")
+plot(varModel.test,names="D.Cac_40")
+plot(varModel.test,names="D.Taux_Change")
+plot(varModel.test,names="D.Brent")
+normality.test(varModel,multivariate.only = TRUE)
 
-par(mfrow=c(3,1))
-hist(resid(varModel)[,1],breaks=c(-3,-2,-1,0,1,2,3))
-hist(resid(varModel)[,2])
-hist(resid(varModel)[,3])
-par(mfrow=c(3,1))
-acf(resid(varModel)[,1],lag=10)
-acf(resid(varModel)[,2],lag=10)
-acf(resid(varModel)[,3],lag=10)
-par(mfrow=c(3,1))
-pacf(resid(varModel)[,1],lag=10)
-pacf(resid(varModel)[,2],lag=10)
-pacf(resid(varModel)[,3],lag=10)
 ```
 La normalité de résidus semble convenable (sauf pour "Total"), et surtout l'absence d'auto corrélation est acquise.
 
