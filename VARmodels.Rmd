@@ -18,42 +18,55 @@ library("dse")
 library("urca")
 library("tsDyn")
 library("stringr")
-library("lubridate")
+library("mnormt")
 ```
-## Prologue
 
-Mon but dans ce billet est de rappeler d'abord la définition d'un processus multivarié, d'en proposer une ou plusieurs simulations "maison" proche de la définition matricielle, puis d'appréhender deux fonctions de R "simulate" et VAR.sim pour en comprendre mieux le paramétrage.
-Ensuite j'aborderai les test de stationnarité, puis de cointégration. Bonne lecture.
+
+## Prologue
+Nous connaissons les séries chronologiques univariées qui met en jeu un processus x(t). Sous R nous pouvons simuler de tels processus par Arima.sim(), ou bien ajuster un modèle Arma sur une série statistique donnée. L'ajustement soulèvera les problématiques de stationnarité, saisonnalité, order du Arma..etc. Une fois obtenu le bon modèle la prédiction future sera possible.
+Le but des lignes qui suivent est de généraliser au cas où X(t) est un vecteur multivarié $X(t)=(x_{1}(t),x_{2}(t).....x_{k}(t)) $.
+Nous resterons dans le cadre des processus dit "Var(p), c'est à dire du type $$X_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$
+Les $B_{i}$ étant des matrices k.p (ordre p et dimension k).
+
+Nous proposons dans une première partie une simulation "maison" proche de la définition matricielle, pour nous aider à paramétrer deux fonctions de R, "simulate" et VAR.sim .
+Ensuite  (partie 2) nous aborderons l'estimation par un modèle à l'aide de la fonction VAR(), mais du fait de la présence de plusieurs variables simultanées le problème de la stationnarité sera un peu plus complexe que dans le cas univarié. En plus les différentes variables pouvant interagir les unes par rapport aux autres nous étudierons les concepts de causalité et de cointégration.
+Pour terminer (partie 3) nous essayerons notre modèle sur un cas concret d'évolution boursière.
+
 Petite remarque: afin d'éviter des "bug" de la fonction "Knit" il est préférable d'utiliser le package "remotes::install_github('yihui/knitr')"
+
+# PREMIERE PARTIE
 
 ## Processus Var(p)
 
 On rappelle qu'un processus vectoriel est un VAR(p) s'il est défini par:
 $$X_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$
-où $X_{t}$ est un vecteur $(x_{1 t},x_{2 t},...,...,x_{k t})^{'}$  
+où $X_{t}$ est un vecteur $(x_{1 t},x_{2 t},...,...,x_{k t})^{'}$  . $\varepsilon_{t}$ est un bruit blanc vectoriel, c'est à dire: $$E(\varepsilon_{t})=0)$$ et  $$E(\varepsilon_{t},\varepsilon^{'}_{t})=\Sigma_{\epsilon} $$ , où $\Sigma_{\epsilon}$  est la matrice de variances-covariances indépendante de t. Si la matrice  $\Sigma_{\epsilon}$ est diagonale, les $\varepsilon{i}_{t}$ sont indépendants.
+
 
 On peut trouver un définition voisine:
 $$AX_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$
 Si A est inversible, on retrouve la première version en multipliant les deux membres de l'égalité par $A^{-1}$
+Mais le produit $A^{-1}\varepsilon_{t}$ introduit de nouvelles corrélations dans le bruit blanc.
 
-Il est bon de noter que pour un VAR(1) $i\in[0;+\infty[$ , $X_{0}$ est la condition initiale, et $X_{1}$ est 
+Il est bon de noter que pour un VAR(1) $t\in[0;+\infty[$ , $X_{0}$ est la condition initiale, et $X_{1}$ est 
 connu par le premier "choc" $\epsilon_{1}$. Nos simulations prendrons en général par défaut $X_{0}=0$ 
 
 ## Une fonction pédagogique 
 
-Nous créons une fonction pour générer des processous VAR(p), non pas pour rivaliser avec les fonctions intégrées de R (VAR.sim ou simulate) mais pour mettre en évidence les calculs matriciels nécssaire à la génération.
-Nous la nommerons var(), elle prendra en paramètres n le nombre d'observations du processus, la matrice A si nécessaire, B, p l'ordre du var (la fonction est encore en constructioin et fonctionne par défaut avec p=1) et le mode "const" ou "none" suivant qu'il y ait $B_{0}$ ou non.
-Cette fonction ne permet (pour l'instant) que de générer des VAR(1) et des bruits blancs gaussiens non corrélés.
+Nous créons une fonction pour générer des processus VAR(p), non pas pour rivaliser avec les fonctions intégrées de R (VAR.sim ou simulate) mais pour mettre en évidence les calculs matriciels nécessaire à la génération.
+Nous la nommerons var(), elle prendra en paramètres n le nombre d'observations du processus, la matrice A si nécessaire, B, p l'ordre du var sera limité à p=1 et le mode "const" ou "none" suivant qu'il y ait $B_{0}$ ou non.
+Cette fonction permet de générer des VAR(1) et des bruits blancs gaussiens non corrélés défaut, ou corrélés de matrice de corrélation Sigma.
 
 ```{r, var}
-var=function(n,A=diag(nrow(B)) , B,lag=1,mod=c("const","none","trend")){
+var=function(n,A=diag(nrow(B)) , B,Sigma=diag(nrow(B)),lag=1,mod=c("const","none","trend")){
+ 
   Ai=solve(A)
   C=ncol(B)
   N=nrow(B)
   vdat=matrix(0,N,n)
   start=1+lag
-  v = matrix(rnorm(N*n),nrow = N,ncol=n,byrow = T)
   
+  v=rmnorm(n=n,mean=rep(0,N),varcov=Sigma) ; v=t(v)  # génération du bruit
   if(mod=="none") {
     vdat[,1:lag]=Ai%*%v[,1:lag] # initialisation
     for(i in start:n) {vdat[,i]=Ai%*%(B%*%vdat[,i-lag] +v[,i])} 
@@ -79,10 +92,12 @@ $$\left(\begin{array}{l}x_{t} \\y_{t}\end{array}\right)=\left(\begin{array}{ll}
 sur 100 réalisations, les $\epsilon_{i}$ des bruits blancs normaux centrés réduits indépendants.
 
 ```{r, exemple1}
+
 set.seed(123456)
 B1<-matrix(c(0.7, 0.2, 0.2, 0.7), 2)
 vdat1=var(100,B=B1,lag=1,mod="none")
 head(vdat1)
+
 ts.plot(vdat1,type="l",col=c(1,2),main="Exemple 1")
 ```
 
@@ -91,19 +106,41 @@ Si on veut rajouter une constante, $\left(\begin{array}{ll}0.5\\0.8\end{array}\r
 
 ```{r, exemple2}
 set.seed(123456)
-B2<-matrix(c(0.5,0.7, 0.2, 0.8,0.2, 0.7),nrow= 2,byrow=T)
+B2<-matrix(c(0.5,0.7, 0.2, 0.8,0.2, 0.7),nrow= 2,byrow=T) #constante=c(0.5,0.8)
 vdat2=var(100,B=B2,lag=1,mod="const")
 head(vdat2)
 ts.plot(vdat2,type="l",col=c(1,2),main="Exemple 1 avec constante")
 ```
-Remarquons au passage qu'avoir ajouté une constante (0.5;0.8) dans le processus bivarié ne cause pas une translation de 0.5 ou 0.8 sur chaque variable (sauf pour la première valeur). Mais en simulant à deux reprises le même bruit blanc la différence entre les deux processus semble converger, mais ce cas particulier ne se trouve jamais dans la réalité.
+
+Remarquons au passage qu'avoir ajouté une constante (0.5;0.8) dans le processus bivarié ne cause pas une translation de 0.5 ou 0.8 sur chaque variable (sauf pour la première valeur). 
+
+Enfin on peut introduire une corrélation entre les composantes du bruit blanc.
+
+```{r, exemple3}
+Cor=matrix(c(1,0.3,0.3,1),2,2) # matrice Sigma
+set.seed(123456)
+B3<-matrix(c(0.7, 0.2,0.2, 0.7),nrow= 2,byrow=T)
+vdat3=var(100,B=B3,lag=1,Sigma=Cor,mod="none")
+head(vdat3)
+ts.plot(vdat3,type="l",col=c(2,3),main="Exemple 1 sans constante et bruits corrélés")
+
+```
+```{r, exemple4}
+Cor=matrix(c(1,0.3,0.3,1),2,2) # matrice Sigma
+set.seed(123456)
+B4<-matrix(c(0.5,0.7, 0.2, 0.8,0.2, 0.7),nrow= 2,byrow=T)
+vdat4=var(100,B=B2,lag=1,Sigma=Cor,mod="const")
+head(vdat4)
+ts.plot(vdat4,type="l",col=c(1,2),main="Exemple 1 avec constante et bruits corrélés")
+
+```
 
 ## Fonction "simulate" de R
 
 Cette fonction simule un VAR(p) dont les coefficients sont préalablement définis par VARMA(), tout ceci dans la librairie "dse".  
 Pour saisir correctement les coefficients il faut écrire le processus de la façon suivante:  
 $$Id.X_{t}-\sum_{i=1}^{p} B_{i} X_{t-i}=B_{0}+\varepsilon_{t}$$       
-et saisir les coefficients de chaque matrice (sans oublier Id !!!) dans l'ordre L1C1, L2C1, L1C2, L2C2...dans une array de 2 sous matrices 2*2...!! .
+et saisir les coefficients de chaque matrice (sans oublier Id !!!) qui occupent les positions L1C1, L2C1, L1C2, L2C2...dans une array de 2 sous matrices 2*2...!! .
 On peut imposer une matrice B correspondant à un polynôme MA. S'il n'y a pas de composante MA autre que $\varepsilon_{t}$ B est l'identité.
 Le vecteur constante correspond au paramètre TREND lorsqu'il est utilisé.
 
@@ -113,21 +150,52 @@ Nous allons retrouver les deux processus générés par notre fonction (à condi
 ```{r, simulate2, message=FALSE,warning=FALSE}
 Apoly= array(c(1,-0.7,0,-0.2,0,-0.2,1,-0.7),c(2,2,2))  
 B = diag(2)
-var1=ARMA(A=Apoly,B=B)  
 set.seed( 123456)
-w = matrix(rnorm(200),nrow = 100,ncol=2)
-varsim1= simulate(var1,sampleT = 100,noise = w)  
+var1=ARMA(A=Apoly,B=B)
+n=100
+w=rmnorm(n,mean=c(0,0),varcov=diag(2)) # simulation du bruit
+varsim1= simulate(var1,sampleT = 100, noise = w ) #
 
 vardat1=matrix(varsim1$output,nrow = 100,ncol=2)
 head(vardat1)
 colnames(vardat1)=c( "y1", "y2")
 ts.plot(vardat1, type="l", col=c(1,2),main="Exemple 1 avec simulate sans constante")
 
+# avec constante
 TRD=c(0.5,0.8)
 var11=ARMA(A=Apoly,B = B,TREND=TRD)
-varsim11= simulate(var11,sampleT = 100,noise = w )
+set.seed( 123456)
+varsim11= simulate(var11,sampleT = n,noise = w )
 vardat11=matrix(varsim11$output,nrow = 100,ncol=2)
+head(vardat11)
 ts.plot(vardat11, type="l", col=c(1,2),main="Exemple 1 avec simulate avec constante")
+
+# Avec corrélations sans constante
+set.seed( 123456)
+var12=ARMA(A=Apoly,B=B) 
+Cor=matrix(c(1,0.3,0.3,1),2,2)
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+varsim12= simulate(var12,sampleT = 100,noise=w) 
+
+vardat12=matrix(varsim12$output,nrow = 100,ncol=2)
+head(vardat12)
+colnames(vardat12)=c( "y1", "y2")
+ts.plot(vardat12, type="l", col=c(1,2),main="Exemple 1c sans constante avec bruits corrélés")
+
+
+# Avec corrélations et constante
+TRD=c(0.5,0.8)
+set.seed( 123456)
+var1c=ARMA(A=Apoly,B=B,TREND=TRD) 
+Cor=matrix(c(1,0.3,0.3,1),2,2)
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+varsim1c= simulate(var1c,sampleT = 100,noise=w) 
+
+vardat1c=matrix(varsim1c$output,nrow = 100,ncol=2)
+head(vardat1c)
+colnames(vardat1c)=c( "y1", "y2")
+ts.plot(vardat1c, type="l", col=c(1,2),main="Exemple 1c avec constante avec bruits corrélés")
+
 ```
 
 L'écriture du processus sous la seconde forme permet de faire apparaître le "polynôme des retards". En effet on nomme L l'opérateur défini par $L(X_{t})=X_{t-1}$ (qui est linéaire ). Par voie de conséquence on aura $L^{p}(X_{t})=X_{t-p}$ , à ce compte là on peut écrire $$Id.X_{t}-\sum_{i=1}^{p} B_{i} X_{t-i}=B_{0}+\varepsilon_{t}=(Id-\sum_{i=1}^{p}B_{i}L^{i})X_{t}=B_{0}+\varepsilon_{t}$$  
@@ -159,14 +227,17 @@ Nous introduisons dans ce modèle une corrélation entre les bruits blancs défi
 
 ```{r, simulate1,message=FALSE }
 Apoly2= array(c(1.0,-0.4,0.2,0,0.2,0.1,0,-0.2,-0.5,1,0.4,-0.3),c(3,2,2))
-B = diag (2)
-C=matrix(c(1,0.3,0.3,1),2)
+B = diag (2) # pas de moyennes mobiles
 TRD=c(2,6)
+n=500
 var2=ARMA(A=Apoly2,B = B,TREND=TRD)
 set.seed(123456) 
-varsim2= simulate(var2,sampleT = 500,Cov=C )
-vardat2=matrix(varsim2$output,nrow = 500,ncol=2)
+Cor=matrix(c(1,0.3,0.3,1),2,2)
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+varsim2= simulate(var2,sampleT = n ,noise=w)
+vardat2=matrix(varsim2$output,nrow = n,ncol=2)
 colnames(vardat2)=c( "y1","y2")
+head(vardat2)
 plot.ts( vardat2,main ="VAR(2) avec simulate", xlab ="’’")
 
 ```
@@ -174,27 +245,66 @@ plot.ts( vardat2,main ="VAR(2) avec simulate", xlab ="’’")
 
 ## Fonction VAR.sim de R
 
-VAR.sim de la librairie tsDyn réalise également des simulations de modèles Var(p). La saisie des coefficients est assez proche de celle de notre fonction pédagogique, à savoir la matrice des coefficeients relative à l'écriture $$X_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$ ; lag=p pour l'ordre du Var, la présence de la constante ou non est paramétrée par include ="const" ou "none", le bruit blanc est "innov=". 
+VAR.sim de la librairie tsDyn réalise également des simulations de modèles Var(p). La saisie des coefficients est assez proche de celle de notre fonction pédagogique, à savoir la matrice des coefficients relative à l'écriture $$X_{t}=B_{0}+\sum_{i=1}^{p} B_{i} X_{t-i}+\varepsilon_{t}$$ ; lag=p pour l'ordre du Var, la présence de la constante ou non est paramétrée par include ="const" ou "none", le bruit blanc est "innov=". 
 Voici ce que donne notre premier Var(1)  
 
 ```{r, VAR.sim1, , warning=FALSE,message=FALSE}
-
-B1<-matrix(c(0.7, 0.2, 0.2, 0.7), 2)
+# sans constante
+B1<-matrix(c(0.7, 0.2, 0.2, 0.7), 2,2)
 set.seed(123456)
-w = matrix(rnorm(200),nrow = 100,ncol=2)
-var1<-VAR.sim(B=B1,lag=1,n=100,include="none",innov=w)
-ts.plot(var1, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim")
+Cor=diag(2)
+n=100
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+varsim1<-VAR.sim(B=B1,lag=1,n=100,include="none",innov=w) 
+head(varsim1)
+ts.plot(varsim1, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim sans constante")
+
+# avec constante
+B1<-matrix(c(0.5,0.7, 0.2,0.8, 0.2, 0.7), 2,3,byrow=TRUE)
+set.seed(123456)
+Cor=diag(2)
+n=100
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+varsim2<-VAR.sim(B=B1,lag=1,n,include="const",innov=w)
+head(varsim2)
+ts.plot(varsim2, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim avec constante")
+
+# Avec corrélations sans constante
+B1<-matrix(c(0.7, 0.2, 0.2, 0.7), 2,2,byrow=TRUE)
+set.seed(123456)
+Cor=matrix(c(1,0.3,0.3,1),2,2)
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+n=100
+varsim3<-VAR.sim(B=B1,lag=1,n,include="none",innov=w)
+head(varsim3)
+ts.plot(varsim3, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim sans constante et bruits corrélés")
+
+# Avec corrélations et constante
+B1<-matrix(c(0.5,0.7, 0.2,0.8, 0.2, 0.7), 2,3,byrow=TRUE)
+set.seed(123456)
+Cor=matrix(c(1,0.3,0.3,1),2,2)
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+n=100
+w=rmnorm(n,mean=c(0,0),varcov=Cor) # simulation du bruit
+varsim4<-VAR.sim(B=B1,lag=1,n,include="const",innov=w)
+head(varsim4)
+ts.plot(varsim4, type="l", col=c(1,2),main="Exemple 1 avec VAR.sim avec constante et bruits corrélés")
+
+
 
 ``` 
 
 En introduisant la constante pour le Var(2)
 ```{r, VAR.sim2}
 B2<-rbind(c(2, 0.4, 0.2,-0.2,0.5), c(6, -0.2, -0.4,-0.1,0.3))
-C=matrix(c(1,0.3,0.3,1),2)
+Cor=matrix(c(1,0.3,0.3,1),2,2)
+w=rmnorm(500,mean=c(0,0),varcov=Cor) # simulation du bruit
 set.seed(123456)
-var2 <- VAR.sim(B=B2,n=500, lag=2,include="const",varcov=C )
-plot.ts( var2,main ="VAR(2) avec VAR.sim", xlab ="’’")
+varsim22 <- VAR.sim(B=B2,n=500, lag=2,include="const",innov=w )
+head(varsim22)
+plot.ts( varsim22,main ="VAR(2) avec VAR.sim", xlab ="’’")
 ```
+# SECONDE PARTIE
 
 ## Stationnarité
 
@@ -247,11 +357,11 @@ qui dépend de t.
 
 ## Cas d'un VAR(1)
 
-Quiconque a essyé de coder une série de type AR(1), (ie $X_{t}=aX_{t-1}+\epsilon_{t}$) s'est rendu compte que le processus est visiblement stationnaire pour |a|<1, ou est une marche aléatoire pour |a|=1 et "explosif" pour |a|>1 .
+Quiconque a essayé de coder une série de type AR(1), (ie $X_{t}=aX_{t-1}+\epsilon_{t}$) s'est rendu compte que le processus est visiblement stationnaire pour |a|<1, ou est une marche aléatoire pour |a|=1 et "explosif" pour |a|>1 .
 Ecrivons un tel processus sous la forme:
 $$(1-aL)X_{t}=\epsilon_{t}$$  
 avec L l'opératuer retard. Cet opérateur est une application linéaire de l'espace vectoriel des fonctions $X_{t}$ muni de la norme $||X||=\underset{t\in{R}}{sup}{(|X_{t}|)} $ 
-qui est donc un espace normé complet (espace de Banach). Par voie de conséquence les apllications linéaires sont dotées aussi d'une norme.
+qui est donc un espace normé complet (espace de Banach). Par voie de conséquence les applications linéaires sont dotées aussi d'une norme.
 $$||L||=\underset{||X||=1}{sup}(||L(X)||)$$
 Pour notre opérateur retard L on a $||L||=1$ (facile à vérifier), par conséquent si |a|<1 on aura $||aL||<1$. Quelques connaissances de calcul différentiel nous permettent de conclure que l'opérateur $(1-aL)$ est inversible et que son inverse sera:
 $$(1-aL)^{-1}=\sum_{j=0}^{+\infty}(aL)^{j}$$
@@ -262,7 +372,7 @@ On sait déjà que $\sum_{j=0}^{+\infty}|a|^{j}$ est absolument convergente , pu
 
 Ce que nous venons d'étudier pour une série simple se transpose aisément au cas d'un VAR(1) multivarié. $X_{t}$ et $\epsilon_{t}$ sont des vecteurs se dimension N, et a devient une matrice A $N\times N$. Si on note encore L l'opérateur retard, le processus est caractérisé par:
 $$(1-AL)X_{t}=\epsilon_{t}$$
-La condition d'inversibilité est $||AL||<1$, donc $||A||<1$. Dans la théorie des espaces vectoriels normés la norme d'une matrice (pzrmi d'autres normes !) est le module de sa plus grande valeur propre. D'où le résultat:  
+La condition d'inversibilité est $||AL||<1$, donc $||A||<1$. Dans la théorie des espaces vectoriels normés la norme d'une matrice (parmi d'autres normes !) est le module de sa plus grande valeur propre. D'où le résultat:  
 *Un processus Var(1) $(1-AL)X_{t}=\epsilon_{t}$ est stable si A a toutes ses valeurs propres en module strictement inférieures à 1*  
 
 N.B: Le lecteur attentif aura remarqué que nous disons "stable" et non plus "stationnaire". 
@@ -349,7 +459,7 @@ les solutions de cettes équations devant vérifier $|z|>1$ .
 ## Tests de stationnarité  
 
 Au vu de ce qui précède, si une au moins des variables incluses dans le VAR n'est pas stationnaire, le VAR ne le sera pas. Donc il va s'agir de contrôler la stationnarité de chaque variable qu'on veut inclure  dans le modèle VAR.
-Avant d'aborder les tests de stationnarité nous ferons un détour pour distiguer deux types de NON-stationnarité d'un processus univarié (ou d'une série univariée).
+Avant d'aborder les tests de stationnarité nous ferons un détour pour distinguer deux types de NON-stationnarité d'un processus univarié (ou d'une série univariée).
 
 ### non stationnarité déterministe
 C'est le cas où le processus est de la forme:
@@ -361,13 +471,13 @@ $X_{t}$ est appelé dans la littérature "trend-stationary process" ou plus simp
 Nous allons développer un exemple.
 Nous simulons le processus : 
 $$X_{t}=0.7X_{t-1}+5+0.05t+\epsilon_{t}$$
-Attention, il n'est pas a priori de la forme trend-stationary process. Nous en traçons une réalisation sur 100 valeurs, qui va suggerer un trend affine f(t), que nous allons estimer par régression de moindres carrés, et retrancher f(t) estimé au processus initial. Le résultat semble stationnaire, ce que nous vérifierons plus loin avec des tests adaptés.
+Attention, il n'est pas a priori de la forme trend-stationary process. Nous en traçons une réalisation sur 100 valeurs, qui va suggérer un trend affine f(t), que nous allons estimer par régression de moindres carrés, et retrancher f(t) estimé au processus initial. Le résultat semble stationnaire, ce que nous vérifierons plus loin avec des tests adaptés.
 
 
 ```{r, trend stationary}
 set.seed(123456)
 B4<-matrix(c(5,0.05, 0.7),nrow=1)
-vdat4=var(100,B=B4,lag=1,mod="trend")
+vdat4=var(100,B=B4,lag=1,mod="trend") # revoir le cas de dim=1 dans la fonction
 ts.plot(vdat4,type="l",col=c(1))
 
 lm=lm(vdat4~c(1:100))
@@ -381,7 +491,7 @@ lines(lm$residuals+15.6336,col="red")
 
 $X_{t}$ est caractérisé par le fait que le processus différencié $X_{t}-X_{t-1}$ est stationnaire.
 $$(1-L) Y_{t}=Z_{t}\;stationnaire $$ 
-Simulons l'exemple $Y{t}=Y_{t-1}+0.1+\epsilon_{t}$ (marche aléatoire avec dérive 0.3)
+Simulons l'exemple $Y{t}=Y_{t-1}+0.3+\epsilon_{t}$ (marche aléatoire avec dérive 0.3)
 
 ```{r, DS}
 set.seed(123456)
@@ -400,7 +510,7 @@ Ce qui s'écrit:
 $$(1-L)^{d} Y_{t}=Z_{t}$$
 Le polynôme retard $(1-L)^d$ a 1 comme racine d'ordre d (ou d racines unitaires).
 
-Il est à noter qu'on peut déceler la non stationnarité par le corrélogramme par une décroissance lente, mais sans que celà permette de distinguer DS ou TS. La stationnarité se signale
+Il est à noter qu'on peut déceler la non stationnarité par le corrélogramme par une décroissance lente, mais sans que cela permette de distinguer DS ou TS. La stationnarité se signale
 
 ```{r, correlogramme}
 acf(vdat4,main="vdat4")
@@ -435,7 +545,7 @@ vdat6=var(100,B=B2,lag=1,mod="trend")
 
 summary(ur.df(vdat6,type="trend",lags=4))
 ```
-Nous obtenons dans la colonne Estimate les valeurs estimées des coefficients avec leurs significativités signalées par les *** . Intercept et tt pour constante et trend, et z.lag.1 pour rho..les autres coeffients sont peu significatifs, ce qui implique qu'on refera le test avec lag=1. 
+Nous obtenons dans la colonne Estimate les valeurs estimées des coefficients avec leurs significativités signalées par les *** . Intercept et tt pour constante et trend, et z.lag.1 pour rho..les autres coefficients sont peu significatifs, ce qui implique qu'on refera le test avec lag=1. 
 
 ```{r, Dickey-Fuller 1.2}
 summary(ur.df(vdat6,type="trend",lags=1))
@@ -475,6 +585,7 @@ summary(ur.df(vdat8,type="trend",lags=1))
 H0 racine unitaire non rejetée, nullité des deux autres coefficients rejetée, donc racine unitaire avec trend et constante.  
 
 
+
 ## Estimation d'un modèle VAR
 
 Nous allons commencer par étudier un processus simulé. Par exemple  VAR(2) sera notre base de données.
@@ -482,13 +593,14 @@ Nous allons commencer par étudier un processus simulé. Par exemple  VAR(2) ser
 ### première étape: s'assurer de la stationnarité des composantes.
 
 ```{r, test}
-summary(ur.df(vardat2[,"y1"],type="drift",lags=1))
-summary(ur.df(vardat2[,"y2"],type="drift",lags=1))
+vardat2.train=vardat2[1:450,]
+summary(ur.df(vardat2.train[,"y1"],type="drift",lags=1))
+summary(ur.df(vardat2.train[,"y2"],type="drift",lags=1))
 ```
 
 ### recherche d'un décalage adapté.
 ```{r, recherche_lag}
-lag=lags.select(vardat2,lag.max =4,include="const")
+lag=lags.select(vardat2.train,lag.max =4,include="const")
 print(lag)
 ```
 
@@ -498,7 +610,7 @@ Nous choisissons un VAR(2)
 
 ```{r, estimation, message=FALSE,warning=FALSE}
 library(vars)
-varest2= VAR(vardat2,p = 2,type ="const",season = NULL,exogen = NULL)
+varest2= VAR(vardat2.train,p = 2,type ="const",season = NULL,exogen = NULL)
 print(varest2)
 ```
 Nous y retrouvons une estimation correcte des coefficients du VAR(2) initial.
@@ -519,6 +631,7 @@ plot(var.test2,names="y1")
 plot(var.test2,names="y2")
 
 ```
+
 Puis test de normalité (test de Jarque-Bera).
 
 ```{r, normalité}
@@ -529,15 +642,24 @@ var.norm2
 ### Prédiction
 
 Notre modèle VAR(2) une fois validé, nous pouvons l'utiliser pour la prédiction.
-Nous fixons un horizon à 8, et traçons les prédictions suivant les 50 dernières valeurs ddes séries.
+Nous fixons un horizon à 10, et traçons les prédictions précédées des 50 dernières valeurs des séries.
 On observera aussi une petite fantaisie avec la fonction "fanchart".
+Parallèlement deux graphique tracent la prédiction et les valeurs test.
 
 ```{r,  prediction}
-pred2 = predict(varest2,n.ahead =8 ,ci = 0.95)
-print(pred2)
-plot(pred2,names="y1",xlim=c(450,508))
-plot(pred2,names="y2",xlim=c(450,508))
-fanchart(pred2,names = "y2",xlim=c(450,508))
+h=10
+vardat2.test=vardat2[451:(450+h),]
+pred2 = predict(varest2,n.ahead =h ,ci = 0.95)
+plot(pred2,names="y1",xlim=c(400,450+h))
+plot(pred2,names="y2",xlim=c(400,450+h))
+fanchart(pred2,names = "y2",xlim=c(400,450+h))
+
+plot(pred2$fcst[[1]][,1],type="l",ylim=c(min(vardat2.test[,1]),max(vardat2.test[,1])))
+lines(vardat2.test[,1],col="red")
+
+plot(pred2$fcst[[2]][,1],type="l",ylim=c(min(vardat2.test[,2]),max(vardat2.test[,2])))
+lines(vardat2.test[,2],col="red")
+
 ```
 
 ### Causalités
@@ -546,12 +668,12 @@ Il nous faut expliquer dans un premier temps ce qu'on entend par causalité au s
 En voici la définition:
 Soit deux processus $\left(X_{t}\right)$ et $\left(Y_{t}\right)$, en notant $\underline{X}_{t}=\left\{X_{t}, X_{t-1}, \ldots\right\}$ et $\underline{Y}_{t}=\left\{Y_{t}, Y_{t-1}, \ldots\right\}$ les passés de $\left(X_{t}\right)$ et de $\left(Y_{t}\right)$ ,on dit que $\left(Y_{t}\right)$ cause $\left(X_{t}\right)$ à la date t si et seulement si $$\mathbb{E}\left(X_{t} | \underline{X}_{t-1}, \underline{Y}_{t-1}\right) \neq \mathbb{E}\left(X_{t} | \underline{X}_{t-1}\right)$$  
 
-Autrement dit, Y cause X si la connaissance du passé de Y  modifie  le comportement de $\(X_{t}\right)$ 
+Autrement dit, Y cause X si la connaissance du passé de Y  modifie  le comportement de $\left(X_{t}\right)$ 
 Il s'agit d'une causalité de long terme.
 
 Le test de causalité va correspondre à un test de Wald sur les coefficients estimés. Pour déterminer si y2 cause y1 on teste la nullité des coefficients de y2 dans l'expression de y1.
 
-Parallèlement on utilise la causalité instantannée.  
+Parallèlement on utilise la causalité instantanée.  
 
 $\left(Y_{t}\right)$ cause instantanément $\left(X_{t}\right)$ à la date t si et seulement si $$\mathbb{E}\left(X_{t} | \underline{X}_{t-1}, \underline{Y}_{t-1}\right) \neq \mathbb{E}\left(X_{t} | \underline{X}_{t-1}, \underline{Y}_{t}\right)$$  
 
@@ -560,6 +682,9 @@ l'introduction de Y à l'instant t (présent) dans le membre de droite de l'iné
 ```{r, causalité}
 causal2=causality( varest2, cause = "y2")
 causal2
+
+causal1=causality( varest2, cause = "y1")
+causal1
 ```
 
 Nous rejetons les deux hypothèses de non causalité, et concluons à une double causalité (Granger et instantannée).  
@@ -583,6 +708,149 @@ plot(imp_cum.y2)
 
 ```
 L'exemple montre un effet de diminition su Y2 et inverse sur y1.
+
+## Cointégration
+
+Quelques définitions d'abord.
+
+### Série intégrée d'ordre d:
+Une série chronologique est dite *intégrée d'ordre d* si d est le plus petit entier tel que $\Delta^{d} X_{t}$ est stationnaire.
+
+Les quatre séries de notre exemple son intégrées d'ordre 1 (on écrit I(1) )
+
+### Séries cointégrées d'ordre d:
+Définition: Une famille de séries intégrées  intégrées d'ordre d sont dites cointégrées d'ordre  C(d,0) ssi  il existe une combinaison linéaire de ces séries qui soit stationnaire.
+
+Le test de Johansen permet de déterminer l'éventuelle cointégration.
+
+Avant de procéder au test montrons le rôle que joue cette cointégration dans le modèle VAR.
+
+On se place dans le cas de N variables intégrées I(1), et pour faciliter la compréhension de notre démonstration, nous n'envisageons qu'un VAR(2), mais la généralisation à l'ordre p ne fait aucune difficulté.  
+Puisque nos variables sont I(1), leurs différentielles sont stationnaires, et donc bonnes candidates pour un VAR.  
+Partons de l'expression VAR.
+
+$$X_{t}=A_{0}+A_{1} X_{t-1}+A_{2} X_{t-2}+\varepsilon_{t}$$
+D'où, en retranchant $X_{t-1}$ aux deux membres de l'égalité. 
+$$X_{t}-X_{t-1}=A_{0}+\left(A_{1}-I\right) X_{t-1}+A_{2} X_{t-2}+\varepsilon_{t}$$
+$$\Longleftrightarrow \Delta X_{t}=A_{0}+\left(A_{1}-I\right)\left(X_{t-1}-X_{t-2}\right)+\left(A_{2}+A_{1}-I\right) X_{t-2}+\varepsilon_{t}$$
+
+$$\Longleftrightarrow \Delta X_{t}=A_{0}+\left(A_{1}-I\right) \Delta X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-2}+\varepsilon_{t}$$
+Là on retranche et rajoute $$\left(A_{2}+A_{1}-I\right) X_{t-1} $$ pour faire entrer $X_{t-2}$ dans une différence.
+$$\begin{aligned}
+\Delta X_{t}=& A_{0}+\left(A_{1}-I\right) \Delta X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-2}
+-\left(A_{2}+A_{1}-I\right) X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-1}+\varepsilon_{t}
+\end{aligned}$$
+On obtient un Var(1) sur les variables différenciées + un terme en $X_{t-1}$.
+$$\Delta X_{t}=A_{0}-A_{2} \Delta X_{t-1}+\left(A_{1}+A_{2}-I\right) X_{t-1}+\varepsilon_{t}$$
+Ou en renommant les matrices
+$$\Delta X_{t}=B_{0}+B_{1} \Delta X_{t-1}+\Pi X_{t-1}+\varepsilon_{t}$$
+A ce stade plusieurs cas vont se présenter suivant le rang de la matrice $\Pi$ 
+
+* $rang(\Pi)=0$ La matrice $\Pi$ est nulle, donc le VAR sur les séries différenciées se déroule normalement.
+* $rang(\Pi)=N$ La matrice $\Pi$ est inversible, donc 
+
+$$X_{t-1}=\Pi^{-1}\left(\Delta X_{t}-B_{0}-B_{1} \Delta X_{t-1}-\epsilon_{t}\right)$$ 
+$X_{t-1}$ serait égal à une transformation linéaire de variables stationnaires, donc serait elle même stationnaire, ce qui n'est pas vrai dans notre contexte, donc ce cas ne seprésente jamais.
+
+* $rang(\Pi)=1$ 
+
+Dans ce cas $\Pi $ est une matrice dont les lignes sont proportionnelles. $L_{1}=(l_{i}, i=1...N),\beta_{2}L_{1},\beta_{3}L_{1},...\beta_{j}L_{1}...$
+
+Dans ce cas $\Pi X_{t-1}$ est un vecteur de N coordonnées  $\lambda_{t-1}u$ u vecteur constant de N coordonnées $$(\sum_{i}l_{i}X_{i_{t-1}},\beta_{1}\sum_{i}l_{i}X_{i_{t-1}}....)$$. En posant $\sum_{i}l_{i}X_{i_{t-1}}=\lambda_{t-1}$ et $u=(1,\beta_{2},...\beta_{j...})$
+On a alors   $$\Pi X_{t-1}=\lambda_{t-1}u$$ 
+
+
+$\lambda_{t-1}$ est un processus univarié stationnaire (la stationnarité de $\lambda_{t-1}$ résulte de l'écriture du VAR sous la forme   
+$$\Delta X_{t}=B_{0}+B_{1} \Delta X_{t-1}+\lambda_{t-1}u+\varepsilon_{t}$$
+De plus l'écriture $\sum_{i}l_{i}X_{i_{t-1}}=\lambda_{t-1}$ indique que les $ X_{i_{t}}$ sont cointégrés d'ordre 1 . 
+En plus on peut réécrire $\Pi X_{t-1}$ sous la forme $u^{'}AX_{t-1}$ où A est la matrice-colonne $L_{1}$ des coefficients de la relation de cointégration. u est appelé force de rappel vers l'équilibre de long terme.
+
+
+Granger montre (Engle,R.E. & Granger,C.W.J. (1987). ’Cointegration and error-correction : representation, estimation
+and testing’. Econometrica. 55 ) que dans ce cas il existe deux matrices de rang r $U$ et $V$ telles que $\Pi=U.V^{'}$ telles que $V^{'}X_{t}$ est stationnaire, chaque colonne de V étant un vecteur de cointégration. (il y a donc r relations de cointégration).
+
+
+
+###Exemple
+
+Nous créons un Var(1) non stationnaire, et volontairement nous le soumettons au modèle Var.
+Nous laissons dans notre document le petit chunk suivant qui permettra au lecteur de varier les choix des valeurs propres et ainsi d'exécuter le chunk suivant dans plusieurs configurations.
+```{r, valeurs prpopres}
+D=matrix(c(1,0,0,0.3),2,2)      # choix des valeurs propres
+P=matrix(c(5,2,2,1),2,2)        # choix du changement de base (matrice de passage)
+Q=solve(P)
+A=P%*%D%*%Q                     # formule du changement de base
+A                                                                     
+```
+
+```{r, exemple_Var}
+
+eigen(A)
+set.seed(123456)
+vdat9=var(500,B=A,mod="none")
+colnames(vdat9)=c("y1","y2")
+ts.plot((vdat9),col=c("red","blue"))
+#vdat91=t(Q%*%t(vdat9))
+#ts.plot(vdat91,col=c("red","blue"))
+```
+En vue d'essayer une prédiction nous créons deux sous échantillons train et test, afin d'y éprouver le modèle Var et effectuer une prévision à l'horizon 10.
+
+
+```{r, exemple_prediction}
+vdat9.train=vdat9[1:450,]
+
+lag=lags.select(vdat9.train,lag.max =4,include="none")
+print(lag)
+
+varest9= VAR(vdat9.train,p = 1,type ="none",season = NULL,exogen = NULL)
+print(varest9)
+roots=roots(varest9)
+roots # présence de racines unitaires !!!
+varest9$varresult
+
+R=matrix(c(3.787,-6.967,1.374,-2.435),2,2,byrow=TRUE)
+YT=vdat9.train[450,]
+R%*%(R%*%YT)
+
+summary(ur.df(vdat9[,1],type="none",lags=1))  # non stationnaire
+summary(ur.df(vdat9[,2],type="none",lags=1))  # non stationnaire
+# prediction
+h=10
+vdat9.test=vdat9[451:(450+h),]
+pred9 = predict(varest9,n.ahead =h ,ci = 0.95)
+
+plot(pred9$fcst[[1]][,1],type="l",ylim=c(min(vdat9.test[,1]),max(vdat9.test[,1])))
+lines(vdat9.test[,1],col="red")
+
+plot(pred9$fcst[[2]][,1],type="l",ylim=c(min(vdat9.test[,2]),max(vdat9.test[,2])))
+lines(vdat9.test[,2],col="red")
+
+var.test9= serial.test(varest9,lags.pt =5,type ="PT.asymptotic")
+var.test9
+plot(var.test9,names="y1")
+plot(var.test9,names="y2")
+
+ts.plot((vdat9[451:460,]))
+
+
+ts.plot(fitted.values(varest9))
+ts.plot(vdat9.train)
+
+test=ca.jo(vdat9.train, type="trace", K=3, ecdet="none", spec="longrun")
+summary(test)
+
+ts=2.8*vdat9[,1]-7*vdat9[,2]  # le lambda(t)
+plot(ts,type="l")
+
+library(tsDyn)
+model9=VECM(vdat9.train,lag=1)
+VECM.predict9=predict(model9,n.ahead=h)
+VECM.predict9
+plot.ts(VECM.predict9)
+
+```
+
+# TROISIEME PARTIE
 
 ## Application sur 5 séries temporelles.
 
@@ -625,81 +893,17 @@ for(i in c("Engie","Cac_40" ,"Taux_Change","Brent"))
 Nous allons différencier les variables ( $\Delta X_{t}=X_{t}- X_{t-1}$), et tenter un modèle VAR sur ces nouvelles variables ("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change","D.Brent) , après avoir vérifié leur stationnarité.
 
 ```{r, diff, results='hide'}
-Ddata.train=apply(data.train.CR[,-1],2,diff)
-colnames(Ddata.train)=c("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change","D.Brent")
+Ddata.train.CR=apply(data.train.CR[,-1],2,diff)
+colnames(Ddata.train.CR)=c("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change","D.Brent")
 
 for(i in c("D.Total","D.Engie","D.Cac_40" ,"D.Taux_Change","D.Brent")) { 
     print(i)
-    print(summary(ur.df(Ddata.train[,i],type="none",lag=1)))
+    print(summary(ur.df(Ddata.train.CR[,i],type="none",lag=1)))
 }
-plot.ts(Ddata.train)
+plot.ts(Ddata.train.CR)
 ```
 A ce stade nous devons examiner la cointégration des séries.
 
-## Cointégration
-
-Quelques définitions d'abord.
-
-### Série intégrée d'ordre d:
-Une série chronologique est dite *intégrée d'ordre d* si d est le plus petit entier tel que $\Delta^{d} X_{t}$ est stationnaire.
-
-Les quatre séries de notre exemple son intégrées d'ordre 1 (on écrit I(1) )
-
-### Séries cointégrées d'ordre d:
-Une famille de séries intégrées  intégrées d'ordre d sont dites cointégrées d'ordre  C(d,0) ssi  il existe une combinaison linéaire de ces séries qui soit stationnaire.
-
-Le test de Johansen permet de déterminer l'éventuelle cointégration.
-
-Avant de procéder au test montrons le rôle que joue cette cointégration dans le modèle VAR.
-
-On se place dans le cas de N variables intégrées I(1), et pour faciliter la compréhension de notre démonstration, nous n'envisageons qu'un VAR(2), mais la généralisation à l'ordre p ne fait aucune difficulté.  
-Puisque nos variables sont I(1), leurs différentielles sont stationnaires, et donc bonnes candidates pour un VAR.  
-Partons de l'expression VAR.
-
-$$X_{t}=A_{0}+A_{1} X_{t-1}+A_{2} X_{t-2}+\varepsilon_{t}$$
-D'où, en retranchant $X_{t-1}$ aux deux memebres de l'égalité. 
-$$X_{t}-X_{t-1}=A_{0}+\left(A_{1}-I\right) X_{t-1}+A_{2} X_{t-2}+\varepsilon_{t}$$
-$$\Longleftrightarrow \Delta X_{t}=A_{0}+\left(A_{1}-I\right)\left(X_{t-1}-X_{t-2}\right)+\left(A_{2}+A_{1}-I\right) X_{t-2}+\varepsilon_{t}$$
-En utilisant maintenant $X_{t-2}$  
-$$\Delta Y_{t}=\mu+(A_{1}-Id)( Y_{t-1}-Y_{t-2})+(A_{1}-Id)Y_{t-2}+A_{2} Y_{t-2}+u_{t}$$ 
-Enfin;
-$$\Longleftrightarrow \Delta X_{t}=A_{0}+\left(A_{1}-I\right) \Delta X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-2}+\varepsilon_{t}$$
-Là on retranche et rajoute $\left(A_{2}+A_{1}-I\right) X_{t-1} $
-$$\begin{aligned}
-\Delta X_{t}=& A_{0}+\left(A_{1}-I\right) \Delta X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-2}
--\left(A_{2}+A_{1}-I\right) X_{t-1}+\left(A_{2}+A_{1}-I\right) X_{t-1}+\varepsilon_{t}
-\end{aligned}$$
-Pour obtenir
-$$\Delta X_{t}=A_{0}-A_{2} \Delta X_{t-1}+\left(A_{1}+A_{2}-I\right) X_{t-1}+\varepsilon_{t}$$
-Ou en renommant les matrices
-$$\Delta X_{t}=B_{0}+B_{1} \Delta X_{t-1}+\Pi X_{t-1}+\varepsilon_{t}$$
-A ce stade plusieurs cas vont se présenter suivant le rang de la matrice $\Pi$ 
-
-* $rang(\Pi)=0$ La matrice est nulle, donc le VAR sur les séries différenciées se déroule normalement.
-* $rang(\Pi)=N$ La matrice est inversible, donc 
-
-$$X_{t-1}=\Pi^{-1}\left(\Delta X_{t}-B_{0}-B_{1} \Delta X_{t-1}-\epsilon_{t}\right)$$ 
-$X_{t-1}$ serait égal à une transformation linéaire de variables stationnaires, donc serait elle même stationnaire, ce qui n'est pas vrai dans notre contexte.
-
-* $rang(\Pi)=1$ 
-Dans ce cas l'image de $\Pi$ est de dimension 1 engendrée par un vecteur u. Une bonne connaisssance de l'algèbre linéaire permet de démontrer que $\Pi=u.l$ où l est un vecteur ligne $l=(l_{1},l_{2},...l_{N})$
-Tous calculs faits (faites les !!) on a $\Pi X_{t-1}=\left (\sum l_{i}X_{i_{t-1}}\right)u$ qu'on peut écrire
-$\lambda_{t-1}u$ avec $\lambda_{t-1}$ processus univarié stationnaire (la stationnarité de $\lambda_{t-1}$ résulte de l'écriture du VAR sous la forme  
-$\Delta Engle,R.E. & Granger,C.W.J. (1987). ’Cointegration and error-correction : representation, estimation
-and testing’. Econometrica. 55=B_{0}+B_{1} \Delta X_{t-1}+\lambda_{t-1}u+\varepsilon_{t}$ )
-De plus $\sum l_{i}X_{i_{t-1}}$ étant stationnaire, on obtient une relation de cointégration des variables.
-
-
-Dans ce cas $\Pi X_{t-1}$ est un vecteur de N coordonnées proportionnelles du type $\lambda_{t-1}u$ u vecteur constant de N coordonnées et $\lambda_{t-1}$ processus univarié stationnaire (la stationnarité de $\lambda_{t-1}$ résulte de l'écriture du VAR sous la forme  
-$\Delta X_{t}=B_{0}+B_{1} \Delta X_{t-1}+\lambda_{t-1}u+\varepsilon_{t}$ )
-On voit alors que chaque coordonnée j de $\Pi X_{t-1}$ est $\sum_{i}a_{i}X_{i_{t-1}}=\lambda_{t-1}u_{j}$
-Ce qui indique que les $ X_{i_{t}}$ sont cointégrés d'ordre 1. 
-En plus on peut réécrire $\Pi X_{t-1}$ sous la forme $u^{'}AX_{t-1}$ où A est la matrice-colonne des coefficients de la relation de cointégration. u est appelé force de rappel vers l'équilibre de long terme.
-
-* $rang(\Pi)=r$ 
-
-Granger montre (Engle,R.E. & Granger,C.W.J. (1987). ’Cointegration and error-correction : representation, estimation
-and testing’. Econometrica. 55 ) que dans ce cas il existe deux matrices de rang r $U$ et $V$ telles que $\Pi=U.V^{'}$ telles que $V^{'}X_{t}$ est stationnaire, chaque colonne de V étant un vecteur de cointégration. (il y a donc r rlations de cointégration).
 
 
 ```{r, test Johansen}
@@ -707,13 +911,13 @@ test=ca.jo(data.train.CR[,c(-1)], type="trace", K=3, ecdet="none", spec="longrun
 summary(test)
 
 ```
-Il apparaît qu'avec 5 variables  r=0 n'est est pas rejeté
+Il apparaît qu'avec 5 variables  r=0 n'est pas rejeté
 
 ## Modèle VAR sur les cinq variables
 
 ### recherche d'un décalage adapté.
 ```{r, recherche_lag2}
-Def=Ddata.train
+Def=Ddata.train.CR
 lag=lags.select(Def,lag.max =4,include="none")
 print(lag)
 ```
@@ -740,13 +944,13 @@ La normalité de résidus semble convenable (sauf pour "Total"), et surtout l'ab
 
 
 ```{r, causality}
-causal.varModel=causality( varModel, cause =c("Cac_40","Taux_Change") )
+causal.varModel=causality( varModel, cause =c("D.Cac_40","D.Taux_Change","D.Brent","D.Engie") )
 causal.varModel
 
-causal.varModel=causality( varModel, cause =c("Total","Taux_Change") )
+causal.varModel=causality( varModel, cause =c("D.Total","D.Taux_Change") )
 causal.varModel
 
-causal.varModel=causality( varModel, cause =c("Cac_40","Total") )
+causal.varModel=causality( varModel, cause =c("D.Cac_40","D.Total") )
 causal.varModel
 
 
@@ -755,17 +959,59 @@ causal.varModel
 Seule une causalité instantannée des accroissements des deux variables "Cac_40","Taux_Change" sur les accroissements "Total" est à retenir.
 
 ```{r, réponse impulsionnelle Total}
-imp_inst.Total=irf(varModel,impulse ="Cac_40",response="Total",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
+imp_inst.Total=irf(varModel,impulse ="D.Cac_40",response="D.Total",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
 plot(imp_inst.Total)
-imp.Total2=irf(varModel,impulse ="Taux_Change",response="Total",n.ahead=10,ortho=FALSE,cumulative=T,boot=T,seed=12345)
+imp.Total2=irf(varModel,impulse ="D.Engie",response="D.Total",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
 plot(imp.Total2)
-imp_inst.Cac_40=irf(varModel,impulse ="Total",response="Cac_40",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
+imp_inst.Cac_40=irf(varModel,impulse ="D.Brent",response="D.Total",n.ahead=10,ortho=FALSE,cumulative=F,boot=T,seed=12345)
 plot(imp_inst.Cac_40)
 
-cor(Ddata.train$Total,Ddata.train$Cac_40)  # ????
+#cor(Ddata.train$Total,Ddata.train$Cac_40)  # ????
 
 ```
+```{r, prediction_2}
+p=predict(varModel,n.ahead=5)
+plot(p,names="D.Total")  # prédiction dur la diff
 
+# Une fonction qui réintègre les valeurs différenciées de la prédiction
+int.pred=function(Train,Pred ){
+  #Pred=p ; Train=data.train.CR ; Name="D.Total"
+  l=dim(Train)[1] ; c=dim(Train)[2]-1
+  h=length(Pred$fcst[[1]][,1])
+  init=Train[l,-1]
+  P=matrix(0,nrow=h,ncol=c)
+  for(j in 1:c) {
+  P[,j]=Pred$fcst[[j]][,1]}
+ P[1,]=P[1,]+as.matrix(init)
+ # calcul de autre valeurs prédites par sommes cumulées des accroissements
+for(i in 2:h ) {    P[i,]=P[i-1,]+P[i,] }
+ P=as.data.frame(P)
+P=cbind(data.test.CR[,1],P)
+ colnames(P)=colnames(data.test.CR)
+  return(P)
+}
+result=int.pred(data.train.CR,p)
+print(result)
+print(data.test.CR)
+
+# retour aux variables initiales
+sigma=matrix(s,nrow=h,ncol=5,byrow=TRUE)
+Mean=matrix(m,nrow=h,ncol=5,byrow=TRUE)
+result.fin=as.matrix(result[,-1])*sigma+Mean
+result.fin=as.data.frame(result.fin)
+plot(result.fin$Total,type="l",col="red",ylim=c(min(data.test$Total),max(data.test$Total)),main="Prédiction VAR Total")
+lines(data.test$Total,col="blue")
+
+
+# https://towardsdatascience.com/vector-autoregressions-vector-error-correction-multivariate-model-a69daf6ab618
+library(tsDyn)
+model=VECM(data.train[,-1],lag=2)
+VECM.predict=predict(model,n.ahead=5)
+VECM.predict
+plot(VECM.predict[,1],type="l",col="red",ylim=c(min(data.test$Total),max(data.test$Total)+.2),main="Prédiction VECM Total")
+lines(data.test$Total,col="blue")
+
+```
 
 
 
